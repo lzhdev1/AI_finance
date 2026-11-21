@@ -18,6 +18,26 @@ docker compose ps -a
 - 一次性服务 `init` 应以状态 0 退出。它应用幂等表结构并初始化基金主数据。API、调度器和前端持续运行。数据库卷归共享实例管理。
 - 模型使用 OpenAI 兼容接口，读取 `LLM_BASE_URL`、`LLM_API_KEY`、`LLM_MODEL_DEEP`（缺省回退至 `LLM_MODEL_FAST`）、`LLM_TIMEOUT`、`LLM_MAX_TOKENS`。容器内修改 Python 代码后执行 `docker compose restart api scheduler`。修改环境变量后执行 `docker compose up -d --force-recreate api scheduler frontend`。
 
+### 本机工作台连接线上经理
+
+在 Windows 本机的 `.env` 设置 `COMPOSE_FILE=docker-compose.yml;docker-compose.workstation.yml`，然后设置以下工作台专用变量。只使用基础 `docker-compose.yml` 时仍按上节方式运行独立开发库和经理。
+
+| 变量 | 用途 |
+| --- | --- |
+| `QUANTLAB_WORKSTATION_SSH_TARGET` | SSH 转发账号及主机，格式为 `user@host` |
+| `QUANTLAB_WORKSTATION_SSH_DIR` | 仓库外的绝对目录，内含该转发账号的专用密钥 `id_ed25519` 和预先核对的主机公钥文件 `known_hosts` |
+| `QUANTLAB_WORKSTATION_PGUSER`、`QUANTLAB_WORKSTATION_PGPASSWORD` | 线上 `quantlab` 库为本机工作台分配的数据库凭据 |
+
+首次配置服务器时，先安装 `socat`。在项目根目录以 root 执行 `install -D -o root -g root -m 0755 infra/workstation-db/server-relay.sh /usr/local/libexec/quantlab-postgres-stdio`。将工作台的专用公钥加入服务器 SSH 账号的 `authorized_keys`，按下例替换公钥占位符。该账号需能运行脚本中的 Docker 查询。SSH 会强制为这把密钥执行该脚本，只将会话的标准输入输出接入 `shared-postgres` 的 PostgreSQL 端口。
+
+```text
+restrict,command="/usr/local/libexec/quantlab-postgres-stdio" ssh-ed25519 <工作台公钥的 Base64 部分>
+```
+
+准备好本机 lzhshow 使用的 Docker 网络 `quantlab-portfolio`。首次从独立开发库切换时先执行 `docker compose -f docker-compose.yml stop scheduler`。如果此前为本机作品集单独启动过生产 Compose 的预览容器，先执行 `docker compose -f docker-compose.prod.yml stop frontend api`，将预览入口交给工作台。随后执行 `docker compose up -d --build`。默认启动的两个工作台都通过容器内的 SSH 隧道连接线上业务库，本机原数据库和两版历史回放文件均保留。
+
+本机工作台的“运行研究”由服务器经理接单。lzhshow 的 `/fund-manager` 预览保留只读访问。可在本机与线上打开同一报告，核对报告编号和最新调度心跳。自动值守及线上数据库初始化均由服务器管理。
+
 ## 作品集容器部署
 
 生产使用 `docker-compose.prod.yml`，镜像内包含后端代码与配置。作品集网关加入外部 Docker 网络 `quantlab-portfolio`，把 `/fund-manager` 和 `/fund-manager/*` 去掉前缀后代理到 `http://quantlab-portfolio-web:80`。工作台的 API 与静态资源都使用同一子路径，服务只通过容器网络访问。公开 API 仅接受读取请求，自动研究和模拟申赎由调度容器继续执行。

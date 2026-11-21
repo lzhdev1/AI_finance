@@ -1,0 +1,2 @@
+*.sh text eol=lf
+ssh_config text eol=lf

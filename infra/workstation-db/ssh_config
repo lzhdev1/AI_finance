@@ -1,0 +1,14 @@
+Host *
+    BatchMode yes
+    IdentitiesOnly yes
+    IdentityAgent none
+    IdentityFile /run/workstation-db/id_ed25519
+    StrictHostKeyChecking yes
+    UserKnownHostsFile /config/known_hosts
+    GlobalKnownHostsFile /dev/null
+    UpdateHostKeys no
+    ConnectTimeout 6
+    ServerAliveInterval 10
+    ServerAliveCountMax 3
+    ControlPath /run/workstation-db/ssh-control
+    RequestTTY no

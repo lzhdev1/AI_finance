@@ -1,0 +1,6 @@
+*
+!Dockerfile
+!ssh_config
+!start.sh
+!connect.sh
+!health.sh

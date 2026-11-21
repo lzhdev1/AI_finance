@@ -1,0 +1,100 @@
+# Combine with docker-compose.yml on a workstation that follows the server's manager.
+x-workstation-db: &workstation-db
+  PGHOST: db-tunnel
+  PGPORT: "5432"
+  PGDATABASE: quantlab
+  PGAPPNAME: quantlab-workstation
+  PGUSER: ${QUANTLAB_WORKSTATION_PGUSER:?Set the workstation database user}
+  PGPASSWORD: ${QUANTLAB_WORKSTATION_PGPASSWORD:?Set the workstation database password}
+
+services:
+  init:
+    profiles: ["local-engine"]
+
+  scheduler:
+    profiles: ["local-engine"]
+
+  db-tunnel:
+    image: quantlab-db-tunnel:local
+    build: ./infra/workstation-db
+    environment:
+      SSH_TARGET: ${QUANTLAB_WORKSTATION_SSH_TARGET:?Set the SSH destination}
+    tmpfs:
+      - /run/workstation-db:mode=0700
+    volumes:
+      - type: bind
+        source: ${QUANTLAB_WORKSTATION_SSH_DIR:?Set the SSH identity directory}
+        target: /config
+        read_only: true
+        bind:
+          create_host_path: false
+    networks: [workstation-db]
+    restart: unless-stopped
+
+  api:
+    environment: *workstation-db
+    depends_on: !override
+      db-tunnel: &tunnel-ready
+        condition: service_healthy
+    networks: !override [default, workstation-db]
+
+  jupyter:
+    environment: *workstation-db
+    depends_on:
+      db-tunnel: *tunnel-ready
+    networks: !override [workstation-db]
+    ports: !override ["127.0.0.1:8888:8888"]
+
+  preview-api:
+    build:
+      context: ./backend
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+        INSTALL_EXTRAS: ""
+    image: quantlab-portfolio-backend:local
+    env_file: .env
+    environment:
+      <<: *workstation-db
+      PGAPPNAME: quantlab-workstation-preview
+      PGOPTIONS: "-c default_transaction_read_only=on"
+      TZ: Asia/Shanghai
+      QUANTLAB_PUBLIC_READ_ONLY: "1"
+    volumes:
+      - ./backend/src:/app/src:ro
+      - ./backend/configs:/app/configs:ro
+      - ./data:/app/data:ro
+    depends_on:
+      db-tunnel: *tunnel-ready
+    networks: [preview, workstation-db]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3).close()"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  preview-frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_BASE_PATH: /fund-manager/
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmmirror.com}
+    image: quantlab-portfolio-web:local
+    environment:
+      QUANTLAB_API_UPSTREAM: preview-api
+    depends_on:
+      preview-api:
+        condition: service_healthy
+    networks:
+      preview: {}
+      portfolio:
+        aliases: [quantlab-portfolio-web]
+    restart: unless-stopped
+
+networks:
+  workstation-db: {}
+  preview: {}
+  portfolio:
+    external: true
+    name: quantlab-portfolio
