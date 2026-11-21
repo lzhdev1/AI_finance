@@ -6,6 +6,7 @@ import argparse
 import logging
 from datetime import timedelta
 
+from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -90,12 +91,50 @@ def job_ingest():
     _request("market_close")
 
 
-def job_intraday():
+def job_prepare():
+    stamp = station.now()
+    if (station.scheduled_time(stamp.date(), "decision_prepare") <= stamp
+            < station.scheduled_time(stamp.date(), "intraday_decide") and runner.is_trade_day(stamp.date())):
+        station.decision_research(prepare=True)
+
+
+def job_intraday(*, deadline=False):
+    if deadline:
+        stamp = station.now()
+        if runner._missed_cutoff(stamp.date()) or not runner.is_trade_day(stamp.date()):
+            return
+        if db.query_one(f"""SELECT 1 FROM {db.qualified('pod_decision')} d JOIN {db.qualified('pod')} p USING(pod_id)
+                WHERE p.strategy_key='agent_manager' AND d.trade_date=%s""", [stamp.date()]):
+            return
     with ingest.phase("manager_decision") as stats:
-        result = runner.run_intraday()
+        result = runner.run_intraday(deadline=deadline)
         stats.update(result)
-        if result.get("status") in {"cutoff", "blocked"}:
+        if result.get("status") in {"cutoff", "blocked", "changed", "unreviewed"}:
             stats["warnings"] = [result["summary"]]
+
+
+def recover_decision_window():
+    stamp = station.now()
+    day = stamp.date()
+    if station.scheduled_time(day, "decision_prepare") <= stamp < station.scheduled_time(day, "intraday_decide"):
+        job_prepare()
+    elif not runner._missed_cutoff(day):
+        job_intraday(deadline=stamp >= station.scheduled_time(day, "decision_retry"))
+
+
+def retry_unfinished_review():
+    stamp = station.now()
+    day = stamp.date()
+    if (runner._missed_cutoff(day) or stamp >= station.scheduled_time(day, "decision_retry")
+            or not runner.is_trade_day(day)):
+        return
+    if db.query_one(f"""SELECT 1 FROM {db.qualified('pod_decision')} d JOIN {db.qualified('pod')} p USING(pod_id)
+                        WHERE p.strategy_key='agent_manager' AND d.trade_date=%s""", [day]):
+        return
+    # An ongoing review gets the whole budget. A previously failed or blocked review may retry.
+    if not db.query_one(f"""SELECT 1 FROM {db.qualified('pipeline_run')} WHERE run_date=%s
+            AND phase='agent_research' AND stats->>'trigger'='decision' AND status='running'""", [day]):
+        job_intraday()
 
 
 def job_snapshot():
@@ -174,6 +213,7 @@ JOBS = {
     "settle": job_settle,
     "score": job_score,
     "research": station.process_queue,
+    "decision_prepare": job_prepare,
 }
 
 
@@ -181,6 +221,7 @@ def build_scheduler():
     settings = load_settings()
     scheduler = BlockingScheduler(
         timezone=settings.timezone,
+        executors={"publication": ThreadPoolExecutor(1)},
         job_defaults={"max_instances": 1, "coalesce": True, "misfire_grace_time": 120},
     )
 
@@ -194,8 +235,15 @@ def build_scheduler():
 
     at("premarket_news", job_news, settings.schedule["premarket_news"], "mon-sun")
     at("ingest_market", job_ingest, settings.schedule["ingest_market"])
+    at("decision_prepare", job_prepare, settings.schedule["decision_prepare"])
     at("intraday_decide", job_intraday, settings.schedule["intraday_decide"])
-    at("decision_retry", job_intraday, settings.schedule["decision_retry"])
+    hour, minute = map(int, settings.schedule["decision_retry"].split(":"))
+    _, first_minute = map(int, settings.schedule["intraday_decide"].split(":"))
+    if first_minute + 1 < minute:
+        scheduler.add_job(retry_unfinished_review, "cron", day_of_week="mon-fri", hour=hour,
+                          minute=f"{first_minute+1}-{minute-1}", second=10, id="decision_review_retry")
+    scheduler.add_job(job_intraday, "cron", day_of_week="mon-fri", hour=hour, minute=f"{minute}-59",
+                      second="0,20,40", kwargs={"deadline": True}, executor="publication", id="decision_retry")
     at("settle", job_settle, settings.schedule["settle"])
     at("late_nav_retry", job_settle, settings.schedule["late_nav_retry"])
     at("morning_nav_retry", job_settle, settings.schedule["morning_nav_retry"])
@@ -215,6 +263,7 @@ def build_scheduler():
     scheduler.add_job(station.heartbeat, "interval", seconds=20, id="heartbeat")
     scheduler.add_job(station.process_queue, "interval", seconds=6, id="research_queue")
     scheduler.add_job(bootstrap, "date", run_date=station.now(), id="recover")
+    scheduler.add_job(recover_decision_window, "date", run_date=station.now(), id="recover_decision")
     return scheduler
 
 

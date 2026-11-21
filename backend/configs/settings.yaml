@@ -9,11 +9,13 @@ database:
   statement_timeout_ms: 120000
 
 # 每日流水线的时点（Asia/Shanghai）
-# 核心约束：场外基金 15:00 截止，所以决策必须在 14:30 出，晚一分钟今天的单就作废。
+# 收盘前预留用户阅读时间。独立发布任务不等待模型或外部数据源。
 schedule:
   premarket_news: "08:30"     # 含周末，更新新闻并生成纯研究报告
-  intraday_decide: "14:30"    # 交易日盘中研究并冻结模拟指令
-  decision_retry: "14:48"     # 当日已有冻结指令时自动跳过
+  decision_prepare: "14:45"  # 采集新闻、盘中行情和经验，形成可重新核查的预案
+  intraday_decide: "14:50"   # 刷新资料，正式复核并发布一张当日指令
+  decision_retry: "14:54"    # 独立发布任务核查可用方案或明确维持持仓
+  decision_publish_by: "14:55" # 目标最晚可见时间；15:00 为不可逾越的交易截止
   ingest_market: "18:30"      # 收盘后：净值、板块行情、资金流全量更新
   settle: "20:30"             # 净值公布后：按真实净值确认成交 + 结算预测
   late_nav_retry: "22:30"
@@ -49,7 +51,7 @@ agent:
   max_position: 0.35           # 单只基金在仓内上限
   max_board_exposure: 0.45     # 单一板块在仓内上限
   max_monthly_turnover: 0.60   # 月度换手上限
-  decision_cutoff: "14:30"     # 决策产出时点；15:00 前提交才能拿到当日净值
+  decision_cutoff: "14:30"     # 旧策略历史回放的取证时点；在线发布使用上方 schedule
   auto_open_pod: true          # 是否允许 agent 自主开新仓
 
 llm:

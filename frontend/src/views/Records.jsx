@@ -191,83 +191,6 @@ function OrdersTable({ rows }) {
     <Empty>尚无已按净值确认的模拟成交。</Empty>
   );
 }
-function Decisions({ items }) {
-  if (!items?.length) return <Empty>尚无经理组合的决策指令。</Empty>;
-  return (
-    <div className="watch-list">
-      {items.map((item, i) => (
-        <details className="decision" key={`${item.trade_date}-${i}`}>
-          <summary>
-            <div>
-              <small>
-                {dateText(item.trade_date)} · {label(item.action)}
-              </small>
-              <strong>{item.summary || label(item.action)}</strong>
-            </div>
-            <Tag
-              value={
-                item.payload?.settlement?.status ||
-                (item.executed_at ? "settled" : "pending")
-              }
-            >
-              {label(
-                item.payload?.settlement?.status ||
-                  (item.executed_at ? "settled" : "pending"),
-              ).replace("待验证", "待结算")}
-            </Tag>
-            <ChevronDown size={16} />
-          </summary>
-          <div className="decision-detail">
-            <TextBlock title="决策依据">{item.rationale}</TextBlock>
-            {item.payload?.research_id && (
-              <a
-                className="report-link"
-                href={`?view=research&report=${item.payload.research_id}`}
-              >
-                查看关联研究报告 #{item.payload.research_id} ↗
-              </a>
-            )}
-            <TextBlock title="结算说明">
-              {item.payload?.settlement?.reason}
-            </TextBlock>
-            {item.payload?.risk_checks?.length > 0 && (
-              <TextBlock title="风控检查">
-                <ul>
-                  {item.payload.risk_checks.map((note, j) => (
-                    <li key={j}>{note}</li>
-                  ))}
-                </ul>
-              </TextBlock>
-            )}
-            {item.executed_at && (
-              <small className="quiet">
-                确认时间 {stamp(item.executed_at)}
-              </small>
-            )}
-            <TextBlock title="冻结的模拟指令">
-              {(item.payload?.instructions || item.payload?.pending)?.length ? (
-                <Table
-                  headers={["方向", "基金代码", "申购金额（元）", "赎回份额"]}
-                  numeric={[2, 3]}
-                  rows={(item.payload.instructions || item.payload.pending).map(
-                    (order) => [
-                      label(order.side),
-                      order.code,
-                      order.side === "buy" ? yuan(order.amount) : "—",
-                      order.side === "sell" ? yuan(order.shares, 6) : "—",
-                    ],
-                  )}
-                />
-              ) : (
-                "本条记录没有待执行的申赎指令。"
-              )}
-            </TextBlock>
-          </div>
-        </details>
-      ))}
-    </div>
-  );
-}
 export function Ledger({ data, revision }) {
   const [tab, setTab] = useState("account");
   const manager = data.manager;
@@ -343,16 +266,6 @@ export function Ledger({ data, revision }) {
         </Panel>
       )}
     </div>
-  );
-}
-
-export function DecisionHistory({ revision }) {
-  return (
-    <Panel title="经理决策指令">
-      <HistoryPage kind="decisions" revision={revision}>
-        {(rows) => <Decisions items={rows} />}
-      </HistoryPage>
-    </Panel>
   );
 }
 
@@ -464,7 +377,9 @@ export function Journal({ data, revision }) {
           全天每 {status.watch_interval_minutes}{" "}
           分钟检查新增资讯和数据，出现新增证据后安排研究。
           {status.schedule?.intraday_decide &&
-            `交易日 ${status.schedule.intraday_decide} 冻结模拟申赎指令。`}
+            `交易日 ${status.schedule.intraday_decide} 启动最终复核。`}
+          {status.schedule?.decision_publish_by &&
+            `当日指令计划于 ${status.schedule.decision_publish_by} 前发布。`}
         </p>
       )}
       {tab === "schedule" ? (

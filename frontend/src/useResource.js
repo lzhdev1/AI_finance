@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { request } from "./api.js";
 
-export default function useResource(url, revision = 0) {
+export default function useResource(url, revision = 0, timeoutMs = 60000) {
   const [state, setState] = useState({
     key: null,
     data: null,
@@ -16,7 +16,7 @@ export default function useResource(url, revision = 0) {
     const timer = window.setTimeout(() => {
       timedOut = true;
       controller.abort();
-    }, 60000);
+    }, timeoutMs);
     setState((prev) => ({
       key: url,
       data: prev.key === url ? prev.data : null,
@@ -41,6 +41,6 @@ export default function useResource(url, revision = 0) {
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [url, revision]);
+  }, [url, revision, timeoutMs]);
   return state.key === url ? state : { data: null, loading: true, error: "" };
 }

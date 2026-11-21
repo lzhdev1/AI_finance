@@ -25,14 +25,14 @@ def select_calls(requests, candidates):
 
 def _board_news(board, as_of):
     rows = db.query(
-        f"""SELECT news_id id,title,left(body,240) excerpt,source,url,published_at
+        f"""SELECT news_id id,title,left(body,240) excerpt,source,url,published_at,ingested_at AS received_at
         FROM {db.qualified("news_item")}
         WHERE published_at BETWEEN %s AND %s AND ingested_at<=%s
         AND (strpos(title,%s)>0 OR strpos(coalesce(body,''),%s)>0)
         ORDER BY published_at DESC,news_id DESC LIMIT 4""",
         [as_of - timedelta(days=7), as_of, as_of, board, board],
     )
-    return [{**r, "published_at": r["published_at"].isoformat()} for r in rows]
+    return [dict(r, published_at=r["published_at"].isoformat(), received_at=r["received_at"].isoformat()) for r in rows]
 
 
 def investigate(requests, candidates, memories, as_of):
@@ -53,9 +53,10 @@ def investigate(requests, candidates, memories, as_of):
             previous = db.query(
                 f"""SELECT report_id,as_of,payload->>'summary' AS summary
                 FROM {db.qualified("agent_research")}
-                WHERE as_of<%s AND payload->'watchlist' @> jsonb_build_array(jsonb_build_object('board_id',%s::int))
+                WHERE as_of<%s AND coalesce((payload->>'recorded_at')::timestamptz,as_of)<=%s
+                AND payload->'watchlist' @> jsonb_build_array(jsonb_build_object('board_id',%s::int))
                 ORDER BY as_of DESC,report_id DESC LIMIT 2""",
-                [as_of, bid],
+                [as_of, as_of, bid],
             )
             result = {
                 "memories": [

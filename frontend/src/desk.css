@@ -1024,6 +1024,47 @@ summary::-webkit-details-marker {
 .decision-detail {
   padding: 0 0 15px;
 }
+.decision-today {
+  padding: 16px 20px;
+}
+.decision-today > p, .decision-no-orders {
+  margin: 6px 0 12px;
+  color: #4d5d48;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.decision-heading, .decision-times, .decision-horizons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+}
+.decision-heading {
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 0 8px;
+}
+.decision-heading h3 {
+  margin: 0;
+  font-size: 18px;
+}
+.decision-today .decision-detail {
+  padding: 0;
+}
+.decision-times {
+  gap: 9px 24px;
+  margin: 12px 0;
+  font-size: 12px;
+}
+.decision-times dt {
+  color: #667460;
+}
+.decision-times dd {
+  margin: 2px 0 0;
+  font-variant-numeric: tabular-nums;
+}
+.decision-horizons {
+  gap: 4px 18px;
+}
 .bh-toolbar {
   display: flex;
   gap: 5px;

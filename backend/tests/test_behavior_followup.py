@@ -17,7 +17,8 @@ def test_prior_plan_reads_only_visible_same_board_closes_and_verified_flows():
     anchor, monday, checkpoint = (date(2026, 11, d) for d in (13, 16, 17))
     dates = [date(2026, 11, d) for d in (10, 11, 12, 13, 16, 17, 18)]
     db.execute_many(
-        f"INSERT INTO {table('trade_calendar')}(trade_date) VALUES (%s)", [(d,) for d in dates]
+        f"INSERT INTO {table('trade_calendar')}(trade_date,ingested_at) VALUES (%s,%s)",
+        [(d, datetime.combine(dates[0], time(8), SH)) for d in dates],
     )
     bid = db.query_one(
         f"INSERT INTO {table('board')}(code,name,kind,source) VALUES ('a','银行','industry','ths') RETURNING board_id"

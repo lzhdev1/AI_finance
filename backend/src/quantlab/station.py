@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import os
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, time
 from zoneinfo import ZoneInfo
 
 import psycopg
@@ -21,8 +21,16 @@ def now():
     return datetime.now(ZoneInfo(load_settings().timezone))
 
 
-def ensure_manager():
-    with db.transaction():
+def scheduled_time(day, key):
+    return datetime.combine(day, time.fromisoformat(load_settings().schedule[key]),
+                            ZoneInfo(load_settings().timezone))
+
+
+def ensure_manager(*, publication=False):
+    with db.transaction() as conn:
+        if publication:
+            conn.execute("SET LOCAL lock_timeout='2s'")
+            conn.execute("SET LOCAL statement_timeout='5s'")
         db.query_one("SELECT pg_advisory_xact_lock(hashtext(%s), 794021002)", [db.schema()])
         manager = db.query_one(
             f"SELECT * FROM {db.qualified('pod')} WHERE strategy_key='agent_manager'"
@@ -145,6 +153,12 @@ def _research_run(run_id, trigger, refresh_news):
         db.execute(f"UPDATE {run_table} SET stats=%s WHERE run_id=%s", [Jsonb(stats), run_id])
 
     try:
+        decision = trigger in {"decision", "decision_prepare"}
+        if decision:
+            from . import realtime
+            stage("snapshot")
+            snapshot = realtime.snapshot()
+            stats["snapshot"] = {key: snapshot.get(key) for key in ("ts", "boards", "indexes")}
         if refresh_news:
             stage("news")
             stats["news"] = {}
@@ -153,7 +167,13 @@ def _research_run(run_id, trigger, refresh_news):
         counts = research.settle_forecast_counts(now())
         stats.update(settled_forecasts=counts["boards"], settled_fund_forecasts=counts["funds"])
         stage("analysis")
-        report = research.generate_research(now())
+        if trigger == "decision_prepare":
+            report = research.generate_research(now(), use_model=False, freeze_forecasts=False)
+        elif trigger == "decision":
+            with llm.research_deadline(scheduled_time(now().date(), "decision_retry")):
+                report = research.generate_research(now())
+        else:
+            report = research.generate_research(now())
         stats["steps"][-1]["finished_at"] = now().isoformat()
         stats.update(
             stage="finished",
@@ -165,12 +185,15 @@ def _research_run(run_id, trigger, refresh_news):
             forecasts=len(report["forecasts"]),
             fund_forecasts=sum(f["status"] != "insufficient" for f in report.get("fund_forecasts", [])),
         )
-        complete = report["mode"] == "llm" and not stats.get("news", {}).get("warnings")
+        complete = (report["mode"] == "llm" or (trigger == "decision_prepare" and report["mode"] == "rules"))
+        complete = complete and not stats.get("news", {}).get("warnings")
         db.execute(
             f"""UPDATE {run_table} SET status=%s, finished_at=now(), stats=%s
             WHERE run_id=%s""",
             ["success" if complete else "partial", Jsonb(stats), run_id],
         )
+        if decision:
+            report["decision_inputs"] = {"snapshot": stats["snapshot"], "news": stats["news"]}
         return report
     except Exception as exc:
         db.execute(
@@ -182,6 +205,12 @@ def _research_run(run_id, trigger, refresh_news):
 
 
 def process_queue():
+    from .runner import is_trade_day
+    stamp = now()
+    schedule = load_settings().schedule
+    if (schedule["decision_prepare"] <= stamp.strftime("%H:%M") < schedule["decision_publish_by"]
+            and stamp.weekday() < 5 and is_trade_day(stamp.date())):
+        return
     with _research_worker_lock() as locked:
         if not locked:
             return
@@ -197,17 +226,45 @@ def process_queue():
             _research_run(row["run_id"], trigger, refresh_news=trigger != "watch")
 
 
-def decision_research():
+def decision_research(*, prepare=False):
     # 交易时段必须重新取证。与手动任务互斥，未能生成新报告时不下单。
     with _research_worker_lock() as locked:
         if not locked:
             raise RuntimeError("已有研究正在运行，本次等待下一个决策窗口")
+        trigger = "decision_prepare" if prepare else "decision"
         row = db.query_one(
             f"""INSERT INTO {db.qualified("pipeline_run")} (run_date,phase,stats)
             VALUES (%s,'agent_research',%s) RETURNING run_id""",
-            [now().date(), Jsonb({"stage": "analysis", "trigger": "decision"})],
+            [now().date(), Jsonb({"stage": "analysis", "trigger": trigger})],
         )
-        return _research_run(row["run_id"], "decision", refresh_news=True)
+        return _research_run(row["run_id"], trigger, refresh_news=True)
+
+
+def completed_decision_research(day, through):
+    row = db.query_one(f"""SELECT r.report_id, r.payload, p.stats
+        FROM {db.qualified('pipeline_run')} p
+        JOIN {db.qualified('agent_research')} r ON r.report_id=(p.stats->>'report_id')::bigint
+        WHERE p.run_date=%s AND p.phase='agent_research' AND p.status IN ('success','partial')
+          AND p.stats->>'trigger' IN ('decision','decision_prepare')
+          AND r.as_of BETWEEN %s AND %s AND r.payload->>'run_mode'='live'
+        ORDER BY r.as_of DESC, r.report_id DESC LIMIT 1""",
+        [day, scheduled_time(day, "decision_prepare"), through])
+    if not row:
+        return None
+    stats = row["stats"]
+    return {**row["payload"], "id": row["report_id"], "decision_inputs": {
+        "snapshot": stats.get("snapshot", {}), "news": stats.get("news", {})},
+        "decision_source": "prepared_review" if stats["trigger"] == "decision_prepare" else "final_review"}
+
+
+def final_refresh_inputs(day):
+    row = db.query_one(f"""SELECT stats FROM {db.qualified('pipeline_run')}
+        WHERE run_date=%s AND phase='agent_research' AND stats->>'trigger'='decision'
+          AND started_at >= %s ORDER BY run_id DESC LIMIT 1""",
+        [day, scheduled_time(day, "intraday_decide")])
+    if row and "news" in row["stats"] and row["stats"].get("snapshot"):
+        return {"snapshot": row["stats"]["snapshot"], "news": row["stats"]["news"]}
+    return None
 
 
 def history(kind, offset=0, limit=40, horizon=None, status=None, *, public=False):
@@ -303,8 +360,10 @@ def dashboard(report_id=None, *, public=False):
                 for k in (
                     "morning_nav_retry",
                     "premarket_news",
+                    "decision_prepare",
                     "intraday_decide",
                     "decision_retry",
+                    "decision_publish_by",
                     "ingest_market",
                     "settle",
                     "score",

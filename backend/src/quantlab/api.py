@@ -14,11 +14,11 @@ import os
 from typing import Literal
 from urllib.parse import urlsplit
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from quantlab import db, replay_archive, replay_comparison, station
+from quantlab import db, decision_status, replay_archive, replay_comparison, station
 
 log = logging.getLogger("quantlab.api")
 
@@ -71,6 +71,12 @@ def agent_market(kind: Literal["industry", "concept"] = "industry") -> dict:
     from .market import market_screen
 
     return market_screen(kind)
+
+
+@app.get("/api/agent/decisions/today")
+def today_decision(response: Response) -> dict:
+    response.headers["Cache-Control"] = "no-store"
+    return decision_status.today()
 
 
 @app.get("/api/agent/history")

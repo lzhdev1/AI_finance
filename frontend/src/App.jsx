@@ -27,8 +27,8 @@ import Overview from "./views/Overview.jsx";
 import Research from "./views/Research.jsx";
 import Replay from "./views/ReplayWorkspace.jsx";
 import Market from "./views/Market.jsx";
+import DecisionHistory, { useCurrentDecision } from "./views/Decisions.jsx";
 import {
-  DecisionHistory,
   Forecasts,
   Ledger,
   Memory,
@@ -89,7 +89,13 @@ export default function App() {
   const [revision, setRevision] = useState(0);
   const [post, setPost] = useState(false);
   const [message, setMessage] = useState(null);
-  const dashboard = useResource("/api/agent/dashboard", revision);
+  const decisionsOpen = view === "decisions";
+  const dashboard = useResource(
+    decisionsOpen && !message?.pending ? null : "/api/agent/dashboard",
+    revision,
+  );
+  const decision = useCurrentDecision(decisionsOpen, revision);
+  const current = decisionsOpen ? decision : dashboard;
   const data = dashboard.data;
   const running = data?.runs?.some(
     (run) => run.status === "running" && /research/.test(run.phase),
@@ -170,7 +176,8 @@ export default function App() {
     }
   }
   const page = parentPage(view);
-  const online = data?.status?.scheduler_online;
+  const online = decisionsOpen ? decision.data?.scheduler_online : data?.status?.scheduler_online;
+  const syncedAt = decisionsOpen ? decision.data?.as_of : data?.status?.now;
   const nav = pages.map((item) => (
     <button
       key={item.id}
@@ -254,20 +261,25 @@ export default function App() {
             <div>
               <div className="dateline">
                 <Clock3 size={13} />
-                {today(data?.status?.now)} · 上海
+                {today(syncedAt)} · 上海
               </div>
               <h1>{page.name}</h1>
             </div>
             <div className="head-actions">
+              {view === "overview" && (
+                <button className="control" onClick={() => go("decisions")}>
+                  当日决策 <ArrowRight size={14} />
+                </button>
+              )}
               <button
                 className="control"
                 onClick={() => setRevision((n) => n + 1)}
-                disabled={dashboard.loading}
+                disabled={current.loading}
                 aria-label="刷新工作台"
               >
                 <RefreshCw
                   size={15}
-                  className={dashboard.loading ? "spin" : ""}
+                  className={current.loading ? "spin" : ""}
                 />
                 <span>刷新</span>
               </button>
@@ -324,6 +336,8 @@ export default function App() {
             <Market revision={revision} />
           ) : view === "forecasts" ? (
             <Forecasts revision={revision} />
+          ) : decisionsOpen ? (
+            <DecisionHistory resource={decision} revision={revision} />
           ) : (
             <StateNotice resource={dashboard} />
           )}
@@ -333,7 +347,6 @@ export default function App() {
               {view === "research" && (
                 <Research data={data} revision={revision} />
               )}
-              {view === "decisions" && <DecisionHistory revision={revision} />}
               {view === "ledger" && <Ledger data={data} revision={revision} />}
               {view === "memory" && <Memory data={data} />}
               {view === "journal" && (
@@ -343,7 +356,7 @@ export default function App() {
           )}
           <footer className="desk-footer">
             <span>
-              <Activity size={13} /> 最近同步 {stamp(data?.status?.now)}
+              <Activity size={13} /> 最近同步 {stamp(syncedAt)}
             </span>
             <span>QuantLab · 基金经理工作台</span>
           </footer>

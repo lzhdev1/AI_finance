@@ -8,14 +8,14 @@ from .config import load_settings
 CMF_BANK_PROSPECTUS = "https://static.cmfchina.com/fundarticle/20260519/20023023257605.pdf#page=36"
 
 
-def sessions(from_day, *, include_start=True, count=9):
+def sessions(from_day, *, include_start=True, count=9, known_by=None):
     operator = ">=" if include_start else ">"
     return [
         r["trade_date"]
         for r in db.query(
             f"SELECT trade_date FROM {db.qualified('trade_calendar')} WHERE trade_date {operator} %s "
-            "ORDER BY trade_date LIMIT %s",
-            [from_day, count],
+            "AND ingested_at<=coalesce(%s::timestamptz,'infinity') ORDER BY trade_date LIMIT %s",
+            [from_day, known_by, count],
         )
     ]
 
@@ -47,7 +47,7 @@ def clock(code, days):
 
 
 def next_application_sessions(as_of):
-    return sessions(as_of.date(), include_start=as_of.time() < time(15))
+    return sessions(as_of.date(), include_start=as_of.time() < time(15), known_by=as_of)
 
 
 def redeemable(account, trade_day):

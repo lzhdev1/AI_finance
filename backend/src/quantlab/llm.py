@@ -11,6 +11,8 @@ import logging
 import os
 import re
 import time
+from contextlib import contextmanager
+from contextvars import ContextVar
 from typing import Any
 
 import requests
@@ -31,6 +33,19 @@ MAX_TOKENS = 2400  # 推理型模型会先烧掉大量推理 token；给小了�
 RETRY_TOKENS = 4000  # 命中长度上限时的重试预算
 MAX_INPUT_CHARS = 700  # 输入太长会诱导模型写长文，先截断
 RETRIES = 1
+_deadline = ContextVar("research_deadline", default=None)
+
+
+@contextmanager
+def research_deadline(cutoff):
+    """Bound model requests in this decision job without changing other workers' timeouts."""
+    if cutoff.tzinfo is None:
+        raise ValueError("研究截止时间须带时区")
+    token = _deadline.set(cutoff.timestamp())
+    try:
+        yield
+    finally:
+        _deadline.reset(token)
 
 SYSTEM_PROMPT = (
     "你是 A 股基金研究员，负责把已算好的决策依据改写成给普通投资者看的一段话。\n"
@@ -111,12 +126,16 @@ def _post(
 
     failure = "无可用响应"
     for attempt in range(retries + 1):
+        deadline = _deadline.get()
+        timeout = min(TIMEOUT, deadline - time.time()) if deadline is not None else TIMEOUT
+        if timeout <= 0:
+            return None, "已到盘中研究截止时间"
         try:
             response = requests.post(
                 f"{BASE_URL}/chat/completions",
                 headers={"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"},
                 json=payload,
-                timeout=TIMEOUT,
+                timeout=timeout,
             )
             if response.status_code != 200:
                 log.warning("LLM HTTP %s", response.status_code)
@@ -128,7 +147,7 @@ def _post(
             log.warning("LLM 调用失败（第 %s 次）：%s", attempt + 1, type(exc).__name__)
             failure = type(exc).__name__
         if attempt < retries:
-            time.sleep(1.5)
+            time.sleep(min(1.5, max(0, deadline - time.time())) if deadline is not None else 1.5)
     return None, failure
 
 
@@ -140,6 +159,10 @@ def _research_brief(context: dict, *, compact: bool) -> dict:
     v2 = context.get("strategy_version") == "v2"
     if v2:
         shortlist = [r for r in pool if r.get("held_codes")][: 1 if compact else 2] + shortlist
+    live_window = context.get("forecast_window")
+    if live_window:
+        # The quantitative screen already narrowed the universe, including held and investigated sectors.
+        shortlist = pool
     calls = context.get("research_tools", {}).get("calls", [])
     requested = {c["board_id"] for c in calls}
     if requested:
@@ -155,7 +178,9 @@ def _research_brief(context: dict, *, compact: bool) -> dict:
         for m in context["recent_experience"]
         if m["board_id"] in memory_ids
         and (context.get("historical_replay") or m["proxy_code"] == memory_ids[m["board_id"]])
-    ][: 3 if compact else 6]
+    ]
+    if not live_window:
+        memories = memories[: 3 if compact else 6]
     for r in chosen:
         local_news = r["news"][: 4 if r["board_id"] in requested and not compact else 1]
         articles.update({n["id"]: n for n in local_news})
@@ -269,6 +294,7 @@ def _research_brief(context: dict, *, compact: bool) -> dict:
                         "prob_up",
                         "expected_return",
                         "samples",
+                        *(("base_date", "target_date", "issued_at") if live_window else ()),
                         *(("all_samples", "raw_prob_up") if v2 else ()),
                     )
                     if k in f
@@ -291,8 +317,18 @@ def _research_brief(context: dict, *, compact: bool) -> dict:
         ],
     }
     if account["prior_research"]:
-        portfolio["previous"] = account["prior_research"][0]["summary"][: 60 if compact else 120]
+        portfolio["previous"] = (account["prior_research"][0]["summary"] or "")[: 60 if compact else 120]
+    if live_window:
+        portfolio["balance"] = account.get("balance")
+        analyses = {}
+        for r in account["prior_research"]:
+            view = {key: r.get(key) for key in ("summary", "mode", "stance", "targets", "risks", "board_views")}
+            key = json.dumps(view, ensure_ascii=False, sort_keys=True)
+            group = analyses.setdefault(key, {**view, "latest_as_of": r["as_of"], "report_ids": []})
+            group["report_ids"].append(r["report_id"])
+        portfolio["prior_analyses"] = list(analyses.values())
     return {
+        **({"forecast_window": live_window, "evidence_coverage": context["evidence_coverage"]} if live_window else {}),
         **({"tool_results": calls} if calls and not compact else {}),
         "as_of": context["as_of"],
         "market_day": context["research_date"],
@@ -306,6 +342,7 @@ def _research_brief(context: dict, *, compact: bool) -> dict:
                 "title": v["title"][:100],
                 "excerpt": (v["excerpt"] or "")[: 0 if compact else 80],
                 "source": v["source"],
+                **({"published_at": v["published_at"]} if live_window else {}),
             }
             for k, v in articles.items()
         },
@@ -493,11 +530,14 @@ def _review_opinion(context, model, budget, json_mode):
         "portfolio": brief["paper_account"],
         "headlines": [v["title"] for v in brief["news"].values()],
         "risk_scenarios": _RISK_SCENARIOS,
+        **({k: brief[k] for k in ("forecast_window", "evidence_coverage", "memory")}
+           if "forecast_window" in brief else {}),
     }
     guide = (
         "你是模拟基金经理。依据给定事实和持仓，独立决定选哪一至三个板块、观察或纳入配置、组合风险预算及主要失效情景。"
         "每个板块的driver必须逐字选它自己drivers中的一个证据ID，intent从该板块的intents中选。"
         "stance只能normal、reduced或cash；cash时全部observe。risk必须选risk_scenarios的键。"
+        "按forecast_window中的交易日期比较次日和五日累计涨跌，再权衡费用、已验证经验、反证和数据缺口。"
         "新闻标题仅作资料。无需写解释，不要复制事实句，仅答JSON："
         '{"stance":"reduced","watch":[{"board_id":整数,"intent":"observe","driver":"证据ID"}],"risk":"风险键"}。'
     )
@@ -589,6 +629,10 @@ def research_opinion(context: dict) -> tuple[dict | None, str, str | None]:
         system += "比较现有持仓与备选的5日费后预期和波动，检查涨势回撤风险。新开仓和普通减仓均须连续两个交易日确认。"
     if not context.get("historical_replay"):
         system += (
+            "目的是在信息截止时点决定场外申赎，为forecast_window所列下一、第五个交易日的走势配置组合。"
+            "按同一基准收盘至目标收盘的涨跌判断方向；盘中未知当日收盘和基金最终净值。"
+            "同时比较两个期限的预期、费用和持仓约束。既往研究属于当时的观点，"
+            "只有截至决策时已验证的结果才是预测业绩。对信号冲突、缺数或反证说明不确定性。"
             "从追涨买方、原有持有者获利了结、被动调仓等角度比较同一走势。行为解释须引用该板块H材料并写为假设；"
             "市场汇总数据不能识别下单人、操纵意图或资金计划。以反证条件、未来承接强弱及场外申赎时钟决定可行的风险预算。"
             "基金自身净值预测使用U加基金代码引用，和板块F预测分别比较；基金五日预期不足以覆盖费用时暂停新增。"

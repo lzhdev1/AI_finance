@@ -29,6 +29,33 @@ def desk(monkeypatch):
         db.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
 
 
+def test_today_decision_keeps_a_previous_card_out_of_the_new_session(desk):
+    from zoneinfo import ZoneInfo
+    from quantlab import decision_status
+
+    sh = ZoneInfo("Asia/Shanghai")
+    friday = datetime(2026, 11, 20, 14, 51, tzinfo=sh)
+    monday = friday + timedelta(days=3)
+    calendar = db.qualified("trade_calendar")
+    assert decision_status.today(monday)["state"] == "calendar_unknown"
+    db.execute_many(f"INSERT INTO {calendar}(trade_date) VALUES (%s)",
+                    [(friday.date(),), (monday.date(),)])
+    manager = station.ensure_manager()
+    db.execute(f"INSERT INTO {db.qualified('pod_decision')}(pod_id,trade_date,action,summary,created_at) "
+               "VALUES (%s,%s,'hold','维持现金',%s)", [manager["pod_id"], friday.date(), friday])
+    assert decision_status.today(friday - timedelta(minutes=1))["decision"] is None
+    published = decision_status.today(friday)
+    assert published["state"] == "published" and published["decision"]["summary"] == "维持现金"
+    assert decision_status.today(friday + timedelta(days=1))["state"] == "closed"
+    for hour, minute, expected in (
+        (14, 44, "scheduled"), (14, 45, "preparing"), (14, 50, "reviewing"),
+        (14, 55, "overdue"), (15, 0, "missed"),
+    ):
+        result = decision_status.today(monday.replace(hour=hour, minute=minute))
+        assert result["state"] == expected
+        assert result["decision"] is None
+
+
 def test_manual_queue_restart_and_dashboard(desk, monkeypatch):
     def enqueue(_):
         try:
@@ -139,16 +166,16 @@ def test_weekend_research_charges_for_the_next_possible_subscription(desk, monke
     sessions = list(pd.bdate_range(end="2026-12-10", periods=160).date)
     known = [d for d in sessions if d < cutoff.date()]
     db.execute_many(
-        f"INSERT INTO {t('trade_calendar')}(trade_date) VALUES (%s)", [(d,) for d in sessions]
+        f"INSERT INTO {t('trade_calendar')}(trade_date,ingested_at) VALUES (%s,%s)", [(d,cutoff) for d in sessions]
     )
     bid = db.query_one(
-        f"INSERT INTO {t('board')}(code,name,kind) VALUES('bank','银行','industry') RETURNING board_id"
+        f"INSERT INTO {t('board')}(code,name,kind,created_at) VALUES('bank','银行','industry',%s) RETURNING board_id", [cutoff]
     )["board_id"]
     fid = db.query_one(
-        f"INSERT INTO {t('instrument')}(code,name,kind) VALUES('014028','银行指数C','otc') RETURNING instrument_id"
+        f"INSERT INTO {t('instrument')}(code,name,kind,created_at,updated_at) VALUES('014028','银行指数C','otc',%s,%s) RETURNING instrument_id", [cutoff,cutoff]
     )["instrument_id"]
     db.execute(
-        f"INSERT INTO {t('instrument_board')}(board_id,instrument_id) VALUES(%s,%s)", [bid, fid]
+        f"INSERT INTO {t('instrument_board')}(board_id,instrument_id,updated_at) VALUES(%s,%s,%s)", [bid, fid,cutoff]
     )
     rows = [(d, 1 + i * 0.0005, cutoff - timedelta(hours=16)) for i, d in enumerate(known)]
     db.execute_many(
@@ -178,8 +205,10 @@ def test_live_trading_clock_excludes_overnight_and_late_instructions(monkeypatch
     for hour, minute, blocked in (
         (0, 1, True),
         (14, 29, True),
-        (14, 30, False),
-        (14, 48, False),
+        (14, 30, True),
+        (14, 49, True),
+        (14, 50, False),
+        (14, 55, False),
         (15, 0, True),
     ):
         stamp = datetime(2026, 11, 20, hour, minute, tzinfo=research.SH)
@@ -187,38 +216,111 @@ def test_live_trading_clock_excludes_overnight_and_late_instructions(monkeypatch
         assert runner._missed_cutoff(stamp.date()) is blocked
 
 
+def test_deadline_publishes_once_while_final_research_is_blocked(desk, monkeypatch):
+    from threading import Event
+    from quantlab import research, runner
+
+    stamp = datetime(2026, 11, 20, 14, 50, tzinfo=research.SH)
+    monkeypatch.setattr(station, "now", lambda: stamp)
+    db.execute(f"INSERT INTO {db.qualified('trade_calendar')}(trade_date) VALUES (%s)", [stamp.date()])
+    started, resume = Event(), Event()
+
+    def slow_review():
+        started.set()
+        assert resume.wait(8)
+        return {"id": 77}
+
+    monkeypatch.setattr(station, "decision_research", slow_review)
+    assert runner.run_intraday(deadline=True)["skipped"]
+    with ThreadPoolExecutor(3) as pool:
+        final = pool.submit(runner.run_intraday)
+        assert started.wait(5)
+        try:
+            stamp = stamp.replace(minute=54)
+            results = list(pool.map(lambda _: runner.run_intraday(deadline=True), range(2)))
+            assert any(row.get("status") == "planned" for row in results)
+        finally:
+            resume.set()
+        assert final.result()["status"] == "existing"
+    rows = station.history("decisions")["items"]
+    assert len(rows) == 1
+    payload = rows[0]["payload"]
+    assert payload["publication"]["source"] == "protective_hold"
+    assert payload["publication"]["published_at"] == stamp.isoformat()
+    assert payload["planned_action"] == "cash" and payload["instructions"] == []
+    stamp += timedelta(days=3)
+    stamp = stamp.replace(hour=15, minute=0)
+    assert runner.run_intraday(deadline=True)["skipped"]
+    assert len(station.history("decisions")["items"]) == 1
+
+
+@pytest.mark.parametrize("new_evidence", [False, True])
+def test_deadline_revalidates_completed_draft_before_using_it(desk, monkeypatch, new_evidence):
+    from quantlab import research, runner
+
+    stamp = datetime(2026, 11, 20, 14, 54, tzinfo=research.SH)
+    before = stamp.replace(minute=45)
+    monkeypatch.setattr(station, "now", lambda: stamp)
+    t = db.qualified
+    days = list(pd.bdate_range(start=stamp.date(), periods=6).date)
+    db.execute_many(f"INSERT INTO {t('trade_calendar')}(trade_date,ingested_at) VALUES (%s,%s)",
+                    [(d,before) for d in days])
+    inputs = {"news": {"cls": {"rows": 4}}, "snapshot": {"boards": 10}}
+    draft = {"id": 12, "decision_source": "prepared_review", "run_mode": "live",
+             "as_of": before.isoformat(), "mode": "rules", "targets": {}, "rationale": "维持现金",
+             "forecast_window": {"base_date": str(days[0]), "next_session": str(days[1]), "fifth_session": str(days[5])},
+             "decision_inputs": inputs}
+    monkeypatch.setattr(station, "completed_decision_research", lambda *_: draft)
+    monkeypatch.setattr(station, "final_refresh_inputs", lambda _: inputs)
+    if new_evidence:
+        db.execute(f"""INSERT INTO {t('news_item')}(source,published_at,ingested_at,title,content_hash)
+                       VALUES ('cls',%s,%s,'新公告','new')""", [stamp,stamp])
+    assert runner.run_intraday(deadline=True)["status"] == "planned"
+    pub = station.history("decisions")["items"][0]["payload"]["publication"]
+    assert pub["evidence_as_of"] == before.isoformat() and pub["reviewed_through"] == stamp.isoformat()
+    assert pub["source"] == ("protective_hold" if new_evidence else "prepared_review")
+    if new_evidence:
+        assert "新闻" in pub["reason"]
+
+
 def test_research_to_paper_fill_to_forecast_memory(desk, monkeypatch):
     """Run the normal decision and settlement entry points in an isolated exchange calendar."""
     from quantlab import realtime, research, runner
 
-    class ExchangeClock(datetime):
+    class ExchangeClockMeta(type):
+        def __instancecheck__(cls, item):
+            return isinstance(item, datetime)
+
+    class ExchangeClock(datetime, metaclass=ExchangeClockMeta):
         @classmethod
         def now(cls, tz=None):
             return cutoff.astimezone(tz)
 
-    cutoff = ExchangeClock(2025, 6, 16, 14, 30, tzinfo=research.SH)
+    cutoff = ExchangeClock(2025, 6, 16, 14, 50, tzinfo=research.SH)
     day = cutoff.date()
     sessions = list(pd.bdate_range(end=day + timedelta(days=10), periods=120).date)
     known = [d for d in sessions if d < day]
     monkeypatch.setattr(station, "now", lambda: cutoff)
     monkeypatch.setattr(research, "datetime", ExchangeClock)
-    monkeypatch.setattr(runner, "_missed_cutoff", lambda d: False)
-    monkeypatch.setattr(realtime, "snapshot", lambda: {"boards": 0})
-    monkeypatch.setattr(station.ingest, "update_news", lambda **kwargs: 0)
+    monkeypatch.setattr(realtime, "snapshot", lambda: {"boards": 1, "ts": cutoff.isoformat()})
+    def refresh_news(*, audit):
+        audit["cls"] = {"rows": 1}
+        return 0
+    monkeypatch.setattr(station.ingest, "update_news", refresh_news)
     # Exercise the configured model-outage path without using a remote model.
     monkeypatch.setattr(station.llm, "research_queries", lambda *args: ([], "测试模式"))
     monkeypatch.setattr(station.llm, "research_opinion", lambda context: (None, "测试模式", None))
     table = db.qualified
     db.execute_many(
-        f"INSERT INTO {table('trade_calendar')}(trade_date) VALUES (%s)", [(d,) for d in sessions]
+        f"INSERT INTO {table('trade_calendar')}(trade_date,ingested_at) VALUES (%s,%s)", [(d,cutoff) for d in sessions]
     )
-    bid = db.query_one(f"""INSERT INTO {table("board")} (code,name,kind) VALUES
-        ('test','测试行业','industry') RETURNING board_id""")["board_id"]
-    fid = db.query_one(f"""INSERT INTO {table("instrument")} (code,name,kind) VALUES
-        ('000001','测试行业指数C','otc') RETURNING instrument_id""")["instrument_id"]
+    bid = db.query_one(f"""INSERT INTO {table("board")} (code,name,kind,created_at) VALUES
+        ('test','测试行业','industry',%s) RETURNING board_id""", [cutoff])["board_id"]
+    fid = db.query_one(f"""INSERT INTO {table("instrument")} (code,name,kind,created_at,updated_at) VALUES
+        ('000001','测试行业指数C','otc',%s,%s) RETURNING instrument_id""", [cutoff,cutoff])["instrument_id"]
     db.execute(
-        f"INSERT INTO {table('instrument_board')}(board_id,instrument_id) VALUES (%s,%s)",
-        [bid, fid],
+        f"INSERT INTO {table('instrument_board')}(board_id,instrument_id,updated_at) VALUES (%s,%s,%s)",
+        [bid, fid, cutoff],
     )
     db.execute_many(
         f"""INSERT INTO {table("board_quote")} (board_id, trade_date, close, ingested_at)
@@ -270,6 +372,11 @@ def test_research_to_paper_fill_to_forecast_memory(desk, monkeypatch):
     report = station.dashboard(second["report_id"])
     assert report["decisions"][0]["payload"]["research_id"] == second["report_id"]
     assert report["orders"][0]["code"] == "000001"
+    instruction = report["decisions"][0]["payload"]
+    assert instruction["instructions"][0]["name"] == "测试行业指数C"
+    assert instruction["planned_action"] == "open"
+    assert instruction["publication"]["source"] == "final_review"
+    assert instruction["publication"]["forecast_targets"]["1"] == str(endpoints[1])
     assert report["manager"]["holdings"][0]["code"] == "000001"
     assert len(research._memory(later)) == 2
     assert all(m["samples"] == 2 for m in research._memory(later))

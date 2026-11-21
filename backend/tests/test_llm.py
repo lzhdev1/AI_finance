@@ -46,6 +46,26 @@ def test_available_requires_full_config(monkeypatch) -> None:
     assert llm.available() is False
 
 
+def test_deadline_bounds_each_model_attempt_and_is_local_to_the_decision(monkeypatch):
+    from datetime import datetime, timezone
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(llm.time, "time", lambda: 100.0)
+    timeouts = []
+
+    def post(url, **options):
+        timeouts.append(options["timeout"])
+        return SimpleNamespace(status_code=200, json=lambda: {"choices": [{"message": {"content": "{}"}}]})
+
+    monkeypatch.setattr(llm.requests, "post", post)
+    with llm.research_deadline(datetime.fromtimestamp(103, timezone.utc)):
+        assert llm._post([], json_mode=True)[0] == "{}"
+    with llm.research_deadline(datetime.fromtimestamp(100, timezone.utc)):
+        assert llm._post([], json_mode=True)[0] is None
+    assert llm._post([], json_mode=True)[0] == "{}"
+    assert timeouts == [min(3, llm.TIMEOUT), llm.TIMEOUT]
+
+
 def test_truncated_research_retries_with_smaller_evidence_within_configured_budget(monkeypatch):
     import json
     from types import SimpleNamespace
@@ -136,6 +156,19 @@ def test_truncated_research_retries_with_smaller_evidence_within_configured_budg
     }
     peer = {**base, "board_id": 86, "board": "证券", "funds": [], "evidence_ids": ["B86"]}
     live.update(review_draft=True, candidates=[row, peer])
+    live["forecast_window"] = {
+        "base_date": "2026-11-20", "next_session": "2026-11-23", "fifth_session": "2026-11-27",
+    }
+    live["evidence_coverage"] = {"boards_screened": 45}
+    live["news"] = [{**article, "published_at": "2026-11-20T14:42:00+08:00"}]
+    row["news"] = peer["news"] = live["news"]
+    live["paper_account"] = {
+        **live["paper_account"],
+        "prior_research": [
+            {"report_id": n, "as_of": f"2026-11-20T14:{n}:00+08:00", "summary": "相同看法" if n > 1 else "观点不同"}
+            for n in range(16, 0, -1)
+        ],
+    }
     selection = {
         "stance": "reduced",
         "watch": [{"board_id": 81, "intent": "allocate", "driver": "G81"}],
@@ -151,6 +184,8 @@ def test_truncated_research_retries_with_smaller_evidence_within_configured_budg
     monkeypatch.setattr(llm, "_post", choose)
     value, status, _ = llm.research_opinion(live)
     assert len(prompts) == 1 and "由已引用证据生成" in status
+    assert prompts[0]["forecast_window"] == live["forecast_window"]
+    assert [g["report_ids"] for g in prompts[0]["portfolio"]["prior_analyses"]] == [list(range(16, 1, -1)), [1]]
     assert value["thesis"] == prompts[0]["candidates"][0]["drivers"]["G81"]
     assert research._selection([row, peer], value, decision_day="2026-11-20")
     for invalid in [

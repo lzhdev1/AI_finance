@@ -22,9 +22,10 @@ def _plans(ids, days, as_of):
             jsonb_array_elements(CASE WHEN jsonb_typeof(w->'behavior'->'path')='array'
                                       THEN w->'behavior'->'path' ELSE '[]'::jsonb END) step
             WHERE r.as_of >= %s AND r.as_of < %s AND r.payload->>'run_mode'='live'
+              AND coalesce((r.payload->>'recorded_at')::timestamptz,r.as_of)<=%s
               AND w->>'board_id'=ANY(%s) AND step->>'target_date'=%s
             ORDER BY r.as_of,r.report_id""",
-        [datetime.combine(days[0], time.min, SH), as_of, [str(i) for i in ids], str(days[-1])],
+        [datetime.combine(days[0], time.min, SH), as_of, as_of, [str(i) for i in ids], str(days[-1])],
     )
     selected = {}
     first_for_anchor = set()
@@ -67,8 +68,8 @@ def attach(pool, as_of, base):
     days = [
         r["trade_date"]
         for r in db.query(
-            f"SELECT trade_date FROM {table('trade_calendar')} WHERE trade_date<=%s ORDER BY trade_date DESC LIMIT 6",
-            [base],
+            f"SELECT trade_date FROM {table('trade_calendar')} WHERE trade_date<=%s AND ingested_at<=%s ORDER BY trade_date DESC LIMIT 6",
+            [base, cutoff],
         )
     ][::-1]
     if len(days) < 2 or days[-1] != base:

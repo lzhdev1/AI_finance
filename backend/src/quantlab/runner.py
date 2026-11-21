@@ -14,9 +14,10 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Mapping, Sequence
-from datetime import date
+from datetime import date, datetime
 
 import pandas as pd
+import psycopg
 from psycopg.types.json import Jsonb
 
 from . import db, decide, execution, manager_v2, otc, pod_store
@@ -105,15 +106,82 @@ def _missed_cutoff(day: date) -> bool:
     return day != now.date() or not start <= now.strftime("%H:%M") < "15:00"
 
 
+def _planned_action(account, instructions):
+    held = account.codes()
+    if not instructions:
+        return "hold" if held else "cash"
+    sides = {order["side"] for order in instructions}
+    if sides == {"buy"}:
+        return "add" if held else "open"
+    if sides == {"sell"}:
+        sold = {order["code"]: order["shares"] for order in instructions}
+        liquidated = all(sold.get(code, 0) >= account.shares_of(code) - 0.0000005 for code in held)
+        return "close" if liquidated else "reduce"
+    return "rebalance"
+
+
+def _publication(day, source, reason, report, reviewed_through, published, instructions=()):
+    from . import station
+    window = report.get("forecast_window") or {}
+    if window:
+        targets = {"1": window.get("next_session"), "5": window.get("fifth_session")}
+    else:
+        days = otc.sessions(day, include_start=False, count=5)
+        targets = {str(n): str(days[n-1]) if len(days) >= n else None for n in (1, 5)}
+    codes = {order["code"] for order in instructions}
+    draft = source == "prepared_review"
+    forecasts = report.get("fund_estimates" if draft else "fund_forecasts") or []
+    outlooks = []
+    for row in forecasts:
+        horizon = str(row.get("horizon_days"))
+        if (row.get("code") in codes and horizon in targets and targets[horizon]
+                and str(row.get("target_date")) == targets[horizon] and row.get("prob_up") is not None):
+            fields = ("code", "name", "horizon_days", "target_date", "prob_up", "expected_return", "status")
+            entry = {key: row.get(key) for key in fields}
+            if draft:
+                entry["status"] = "estimate"
+            outlooks.append(entry)
+    return {
+        "published_at": published.isoformat(), "evidence_as_of": report.get("as_of"),
+        "reviewed_through": reviewed_through.isoformat() if reviewed_through else None,
+        "source": source, "reason": reason, "forecast_targets": targets,
+        "late": published > station.scheduled_time(day, "decision_publish_by"),
+        "inputs": report.get("decision_inputs", {}),
+        "fund_outlooks": outlooks,
+    }
+
+
+def _unreviewed_reason(day, report, source, stamp):
+    from . import station
+    start = station.scheduled_time(day, "decision_prepare" if source == "prepared_review" else "intraday_decide")
+    if report.get("run_mode") != "live" or not report.get("as_of") or not start <= datetime.fromisoformat(report["as_of"]) <= stamp:
+        return "未取得当日发布窗口的有效研究"
+    if report.get("mode") not in ("rules", "llm") or report.get("targets") is None:
+        return "本轮研究可用数据不足，未形成可执行的目标仓位"
+    window = report.get("forecast_window") or {}
+    if window.get("base_date") != str(day) or not all(window.get(k) for k in ("next_session", "fifth_session")):
+        return "交易日历不足以判断本次指令的下一、第五交易日预测目标"
+    inputs = report.get("decision_inputs", {})
+    if not inputs.get("snapshot", {}).get("boards"):
+        return "本轮收盘前刷新未取得可核验板块快照"
+    news = inputs.get("news", {})
+    if not any(isinstance(info, dict) and info.get("rows") for info in news.values()):
+        return "本轮收盘前刷新未取得可核验的新闻源响应"
+    return None
+
+
 def plan_pod(pod: Mapping, market: decide.MarketView | date, universe: dict,
-             research_report: Mapping | None = None, *, replay: bool = False) -> dict:
+             research_report: Mapping | None = None, *, replay: bool = False, publication_source=None) -> dict:
     """Lock the book and freeze the actual subscription amount and redemption units."""
     manager = pod["strategy_key"] == "agent_manager"
     if isinstance(market, date) and not manager:
         raise ValueError("策略回放需要包含行情的 MarketView")
     day = market if isinstance(market, date) else market.trade_date
     pod_id = pod["pod_id"]
-    with db.transaction():
+    with db.transaction() as conn:
+        if publication_source:
+            conn.execute("SET LOCAL lock_timeout='2s'")
+            conn.execute("SET LOCAL statement_timeout='5s'")
         current = db.query_one(f"SELECT status FROM {db.qualified('pod')} WHERE pod_id = %s FOR UPDATE", [pod_id])
         existing = db.query_one(
             f"SELECT * FROM {db.qualified('pod_decision')} WHERE pod_id = %s AND trade_date = %s",
@@ -131,7 +199,8 @@ def plan_pod(pod: Mapping, market: decide.MarketView | date, universe: dict,
 
         prev = prev_trade_date(day)
         account = pod_store.load_account(pod, as_of=day)
-        codes = set(pod_store.instrument_map()) | set(account.codes())
+        instruments = pod_store.instrument_map(include_inactive=True)
+        codes = {code for code, item in instruments.items() if item["is_active"]} | set(account.codes())
         if replay:
             prices = execution.nav_on(prev, codes)
         else:
@@ -145,6 +214,10 @@ def plan_pod(pod: Mapping, market: decide.MarketView | date, universe: dict,
         research_targets = None
         notes = []
         if manager:
+            if publication_source:
+                problem = _unreviewed_reason(day, report, publication_source, station.now())
+                if problem:
+                    return {"status": "unreviewed", "summary": problem}
             proposed = report.get("targets")
             reason = report.get("rationale") or "本轮研究未给出交易目标，保持已确认持仓"
             drawdown = float(_last_snapshot(pod_id)["drawdown"] or 0)
@@ -186,6 +259,7 @@ def plan_pod(pod: Mapping, market: decide.MarketView | date, universe: dict,
                     sessions = otc.sessions(day)
                     for order in pending:
                         order["otc"] = otc.clock(order["code"], sessions)
+                        order["name"] = instruments[order["code"]]["name"]
                 notes.extend(checks)
             except (TypeError, ValueError) as exc:
                 notes.append(f"目标未通过风控校验，本轮维持持仓（{exc}）")
@@ -218,6 +292,19 @@ def plan_pod(pod: Mapping, market: decide.MarketView | date, universe: dict,
             "settlement": {"status": "pending"}, "mode": "replay" if replay else "paper",
             "fee_rates": {order["code"]: account.fees.get(order["code"], {}) for order in pending},
         })
+        if publication_source:
+            from . import research
+            reviewed = station.now()
+            changed = research.decision_evidence_since(datetime.fromisoformat(report["as_of"]), reviewed,
+                                                       exclude_report_id=report["id"])
+            if changed:
+                return {"status": "changed", "summary": "研究取数后有新增资料需重新复核：" + "、".join(changed),
+                        "reviewed_through": reviewed}
+            reason = ("按最新可见资料完成正式复核" if publication_source == "final_review"
+                      else "已核对预案之后的资料，未发现新的决策依据；采用当日已完成的预案")
+            card["payload"]["planned_action"] = _planned_action(account, pending)
+            card["payload"]["publication"] = _publication(day, publication_source, reason, report,
+                                                          reviewed, station.now(), pending)
         if not replay and _missed_cutoff(day):
             return {"action": "hold", "status": "cutoff", "summary": "指令计算完成时已过 15:00 截止"}
         decide.save_card(pod_id, day, card, executed=False)
@@ -692,25 +779,82 @@ def run_daily(trade_date: date | None = None, open_new: bool = True, as_of: date
     return result
 
 
-# ---------------------------------------------------------------- 14:30 / 20:30 两段式
+# ---------------------------------------------------------------- 盘中冻结 / 晚间确认
 
-def run_intraday(trade_date: date | None = None, universe: dict | None = None) -> dict:
-    from . import realtime, station
+def _protective_hold(pod, day, reason, report, reviewed_through=None):
+    """Publish a final zero-order instruction without waiting on external providers or model workers."""
+    from . import station
+    with db.transaction() as conn:
+        conn.execute("SET LOCAL lock_timeout='2s'")
+        conn.execute("SET LOCAL statement_timeout='5s'")
+        current = db.query_one(f"SELECT status FROM {db.qualified('pod')} WHERE pod_id=%s FOR UPDATE", [pod["pod_id"]])
+        existing = db.query_one(f"SELECT action,summary FROM {db.qualified('pod_decision')} WHERE pod_id=%s AND trade_date=%s",
+                                [pod["pod_id"], day])
+        if existing:
+            return {"status": "existing", **existing}
+        if not current or current["status"] not in ("active", "observing") or day < pod["opened_on"] or not is_trade_day(day):
+            return {"status": "blocked", "summary": "当前账户或日期不满足交易条件"}
+        barrier = _decision_barrier(pod["pod_id"], day)
+        if barrier and barrier not in reason:
+            reason += "；" + barrier
+        held = bool(_last_snapshot(pod["pod_id"]).get("market_value"))
+        published = station.now()
+        publication = _publication(day, "protective_hold", reason, report or {}, reviewed_through, published)
+        card = {"action": "hold", "summary": "维持现有持仓" if held else "保持空仓", "confidence": None,
+                "rationale": reason + "；本日不申购、不赎回。", "tomorrow_outlook": "", "long_term_view": pod["thesis"],
+                "invalidation_note": "", "newcomer_verdict": "", "model": "deadline-risk-control",
+                "prompt_version": "manager-v2", "payload": {"publication": publication,
+                    "planned_action": "hold" if held else "cash", "instructions": [], "pending": [], "targets": None,
+                    "research_id": (report or {}).get("id"), "risk_checks": [reason], "mode": "paper",
+                    "settlement": {"status": "pending"}, "pricing": "otc_nav", "otc_clock_version": 1}}
+        if _missed_cutoff(day):
+            return {"status": "cutoff", "summary": "已过当日申赎截止，不能补写指令"}
+        decide.save_card(pod["pod_id"], day, card, executed=False)
+        return {"status": "planned", "action": "hold", "summary": card["summary"], "reason": reason}
+
+
+def run_intraday(trade_date: date | None = None, universe: dict | None = None, *, deadline=False) -> dict:
+    from . import station
 
     now = station.now()
     day = trade_date or now.date()
     if _missed_cutoff(day) or not is_trade_day(day):
         return {"skipped": "当前时间不在当日申赎窗口", "trade_date": str(day)}
-    pod = station.ensure_manager()
+    if deadline and now < station.scheduled_time(day, "decision_retry"):
+        return {"skipped": "尚未到达独立发布时点"}
+    pod = station.ensure_manager(publication=True)
     existing = db.query_one(f"SELECT decision_id FROM {db.qualified('pod_decision')} "
                             "WHERE pod_id=%s AND trade_date=%s", [pod["pod_id"], day])
     if existing:
         return {"skipped": "当日指令已经冻结", **existing}
-    snapshot = realtime.snapshot()
-    report = station.decision_research()
-    card = plan_pod(pod, day, universe or load_universe(), research_report=report)
-    return {"trade_date": str(day), "boards": snapshot["boards"], "report_id": report["id"],
-            "status": card["status"], "action": card["action"], "summary": card["summary"]}
+    # The deadline worker reads only durable state. It never waits for the research worker lock.
+    if deadline:
+        report = station.completed_decision_research(day, now)
+        if report and report["decision_source"] == "prepared_review":
+            refresh = station.final_refresh_inputs(day)
+            if not refresh:
+                return _protective_hold(pod, day, "正式复核尚未确认本轮行情和新闻刷新，预案不足以提交交易", report)
+            report["decision_inputs"] = refresh
+        if not report:
+            return _protective_hold(pod, day, "截至独立发布时点尚无当日已完成的有效预案或正式复核", None)
+    else:
+        report = station.decision_research()
+    for attempt in range(2):
+        source = report.get("decision_source", "final_review")
+        try:
+            card = plan_pod(pod, day, universe or {}, research_report=report, publication_source=source)
+        except psycopg.Error:
+            if not deadline:
+                raise
+            log.exception("指令复核数据库操作超时或失败，单独尝试冻结维持指令")
+            return _protective_hold(pod, day, "发布窗口内未能完成账本和决策依据核对", report)
+        if card["status"] == "changed" and not deadline and attempt == 0 and station.now() < station.scheduled_time(day, "decision_retry"):
+            report = station.decision_research()
+            continue
+        if deadline and card["status"] in {"changed", "blocked", "unreviewed"}:
+            return _protective_hold(pod, day, card["summary"], report, card.get("reviewed_through"))
+        return {"trade_date": str(day), "report_id": report["id"], "status": card["status"],
+                "action": card.get("action"), "summary": card["summary"]}
 
 
 def run_settle(trade_date: date | None = None) -> dict:

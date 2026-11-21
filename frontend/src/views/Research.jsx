@@ -137,6 +137,7 @@ function ToolHistory({ tools }) {
 }
 
 function ResearchNote({ report }) {
+  const horizon = report.forecast_window;
   return (
     <section className="brief">
       <div className="brief-meta">
@@ -164,6 +165,12 @@ function ResearchNote({ report }) {
         </details>
       )}
       <TextBlock title="策略依据">{report.rationale}</TextBlock>
+      {horizon && (
+        <TextBlock title="这次决策研判的行情">
+          基准日 {dateText(horizon.base_date)}，下一交易日 {dateText(horizon.next_session)}，
+          第五个交易日 {dateText(horizon.fifth_session)}。{horizon.definition}
+        </TextBlock>
+      )}
       {report.risks?.length > 0 && (
         <TextBlock title="风险与失效条件">
           <ul>
@@ -414,6 +421,7 @@ export default function Research({ data, revision }) {
     id ? `/api/agent/dashboard?report_id=${encodeURIComponent(id)}` : null,
   );
   const report = id ? past.data?.report : data.report;
+  const coverage = report?.evidence?.evidence_coverage;
   return (
     <div className="page-stack">
       <div className="toolbar">
@@ -506,9 +514,16 @@ export default function Research({ data, revision }) {
             }
           >
             <div className="panel-inner">
-              <p className="quiet">
+              {coverage ? (
+                <div className="data-note">
+                  <p>截至 {stamp(report.as_of)}，筛查 {coverage.news_screened} 条新闻、{coverage.boards_screened} 个板块。
+                    盘中价格覆盖 {coverage.boards_with_intraday_price} 个板块，盘中资金流覆盖 {coverage.boards_with_intraday_flow} 个。</p>
+                  <p>可用的已验证板块预测共 {coverage.verified_sector_forecasts} 条。
+                    本轮调取 {coverage.prior_reports_read.length} 份既往研究、{coverage.recent_confirmed_orders} 笔近期已确认成交。</p>
+                </div>
+              ) : <p className="quiet">
                 行情样本覆盖 {report.evidence?.market_count ?? "—"} 个板块
-              </p>
+              </p>}
               {report.evidence?.notes?.map((line, i) => (
                 <p className="data-note" key={i}>
                   {line}
@@ -572,8 +587,9 @@ export default function Research({ data, revision }) {
             <Panel title="本次调用的过往研究">
               <div className="panel-inner">
                 {report.evidence.prior_research.map((row, i) => (
-                  <TextBlock key={i} title={stamp(row.as_of)}>
+                  <TextBlock key={row.report_id ?? i} title={stamp(row.as_of)}>
                     {row.summary}
+                    {row.report_id && <> <a className="report-link" href={`?view=research&report=${row.report_id}`}>报告 #{row.report_id} ↗</a></>}
                   </TextBlock>
                 ))}
               </div>

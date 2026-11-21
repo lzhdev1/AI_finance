@@ -37,8 +37,8 @@ def annotate(pool, closed, as_of, base):
         [
             str(r["trade_date"])
             for r in db.query(
-                f"SELECT trade_date FROM {db.qualified('trade_calendar')} WHERE trade_date>%s ORDER BY 1 LIMIT 5",
-                [base],
+                f"SELECT trade_date FROM {db.qualified('trade_calendar')} WHERE trade_date>%s AND ingested_at<=%s ORDER BY 1 LIMIT 5",
+                [base, as_of],
             )
         ]
         if base

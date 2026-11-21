@@ -27,8 +27,8 @@ def test_intraday_fund_prediction_waits_for_both_published_navs():
     closed = list(pd.bdate_range(end=base - timedelta(days=1), periods=140).date)
     future = list(pd.bdate_range(start=base + timedelta(days=1), periods=10).date)
     db.execute_many(
-        f"INSERT INTO {table('trade_calendar')}(trade_date) VALUES (%s)",
-        [(d,) for d in closed + [base] + future],
+        f"INSERT INTO {table('trade_calendar')}(trade_date,ingested_at) VALUES (%s,%s)",
+        [(d, stamp) for d in closed + [base] + future],
     )
     fid = db.query_one(
         f"INSERT INTO {table('instrument')}(code,name,kind) VALUES ('014028','基金C','otc') RETURNING instrument_id"
@@ -83,7 +83,8 @@ def test_online_book_registers_lots_and_separates_receivable_from_nav(monkeypatc
     table = db.qualified
     days = list(pd.bdate_range(start=date(2025, 6, 12), periods=16).date)
     db.execute_many(
-        f"INSERT INTO {table('trade_calendar')}(trade_date) VALUES (%s)", [(d,) for d in days]
+        f"INSERT INTO {table('trade_calendar')}(trade_date,ingested_at) VALUES (%s,%s)",
+        [(d, datetime.combine(days[0], time(8), SH)) for d in days],
     )
     fid = db.query_one(
         f"INSERT INTO {table('instrument')} (code,name,kind) VALUES ('014028','银行C','otc') RETURNING instrument_id"
@@ -103,7 +104,7 @@ def test_online_book_registers_lots_and_separates_receivable_from_nav(monkeypatc
     pod = pod_store.get_pod(pod_id)
 
     def plan(idx, targets):
-        cutoff = datetime.combine(days[idx], time(14, 30), SH)
+        cutoff = datetime.combine(days[idx], time(14, 50), SH)
         monkeypatch.setattr(station, "now", lambda: cutoff)
         return runner.plan_pod(pod, days[idx], {}, {"targets": targets})
 
@@ -123,6 +124,42 @@ def test_online_book_registers_lots_and_separates_receivable_from_nav(monkeypatc
     assert pod_store.load_account(pod).cash == pytest.approx(70000 + net)
     assert otc.clock("unknown", days)["source_url"] is None
     assert otc.clock("unknown", days)["redemptions_available_date"] == str(days[1])
+
+
+def test_freeze_review_checks_publication_and_receipt_without_counting_its_own_work():
+    from quantlab import research
+
+    t = db.qualified
+    start = datetime(2026, 11, 20, 14, 50, tzinfo=SH)
+    through = start + timedelta(minutes=1)
+    later = through + timedelta(minutes=1)
+    news = f"""INSERT INTO {t('news_item')}(source,published_at,ingested_at,title,content_hash)
+               VALUES ('fixture',%s,%s,'title',%s)"""
+    db.execute_many(news, [(start, later, "late-arrival"), (later, start, "unpublished")])
+    assert research.decision_evidence_since(start, through) == []
+    db.execute_many(news, [(start, through, "just-received"), (through, start, "just-published")])
+    rid = db.query_one(
+        f"INSERT INTO {t('agent_research')}(as_of,mode,payload) VALUES (%s,'llm',%s) RETURNING report_id",
+        [start, Jsonb({"recorded_at": through.isoformat(), "run_mode": "live"})],
+    )["report_id"]
+    assert set(research.decision_evidence_since(start, through)) == {"新闻", "已完成研究"}
+    assert research.decision_evidence_since(start, through, exclude_report_id=rid) == ["新闻"]
+    assert research.decision_evidence_since(through, through, exclude_report_id=rid) == []
+
+
+def test_prior_analysis_includes_entire_session_and_excludes_late_results():
+    from quantlab import research
+
+    now = datetime(2026, 11, 20, 14, 50, tzinfo=SH)
+    insert = f"INSERT INTO {db.qualified('agent_research')}(as_of,mode,payload) VALUES (%s,'rules',%s)"
+    for minutes in range(1, 17):
+        issued = now - timedelta(minutes=minutes)
+        db.execute(insert, [issued, Jsonb({"run_mode": "live", "summary": str(minutes), "recorded_at": issued.isoformat()})])
+    db.execute(insert, [now - timedelta(minutes=20), Jsonb({
+        "run_mode": "live", "summary": "late", "recorded_at": (now + timedelta(seconds=3)).isoformat(),
+    })])
+    prior = research._account_context(now, now.date())["prior_research"]
+    assert [r["summary"] for r in prior] == list(map(str, range(1, 17)))
 
 
 def test_five_day_fund_calibration_only_uses_disjoint_matured_raw_estimates():

@@ -42,13 +42,14 @@ def _clock(as_of):
     return as_of.astimezone(SH)
 
 
-def _sessions(as_of):
+def _sessions(as_of, *, replay=False):
     day = as_of.date()
     days = [
         r["trade_date"]
         for r in db.query(
-            f"SELECT trade_date FROM {db.qualified('trade_calendar')} WHERE trade_date BETWEEN %s AND %s ORDER BY 1",
-            [day - timedelta(days=400), day + timedelta(days=35)],
+            f"SELECT trade_date FROM {db.qualified('trade_calendar')} WHERE trade_date BETWEEN %s AND %s "
+            "AND (%s OR ingested_at<=%s) ORDER BY 1",
+            [day - timedelta(days=400), day + timedelta(days=35), replay, as_of],
         )
     ]
     closed = [d for d in days if d < day or (d == day and as_of.time() >= time(15))]
@@ -59,17 +60,74 @@ def _sessions(as_of):
     return closed, base, {h: future[h - 1] for h in HORIZONS if len(future) >= h}
 
 
+def forecast_window(as_of, base, due):
+    return {
+        "information_cutoff": as_of.isoformat(),
+        "base_date": base.isoformat() if base else None,
+        "next_session": due[1].isoformat() if 1 in due else None,
+        "fifth_session": due[5].isoformat() if 5 in due else None,
+        "definition": "从基准交易日收盘至下一及第五个交易日收盘分别判断涨跌。板块使用同一指数收盘价，"
+        "标有代理代码的板块及单只基金使用对应基金的单位净值。五日指累计涨跌。"
+        "盘中时基准日收盘价和单位净值尚未知，到期公布后再检验。",
+    }
+
+
+def decision_evidence_since(start, through, *, exclude_report_id=None):
+    """Categories of newly visible decision inputs in (start, through], in one DB snapshot."""
+    start, through = _clock(start), _clock(through)
+    if through < start:
+        raise ValueError("复核时点早于研究信息截止时间")
+    # Availability of a news item is the later of publisher and local receipt clocks.
+    # Historical bars are usable only after their exchange close and local ingestion.
+    close = "(trade_date + time '15:00') AT TIME ZONE 'Asia/Shanghai'"
+    inputs = (
+        ("新闻", "news_item", "greatest(published_at,ingested_at)", "published_at >= w.until - interval '7 days'"),
+        ("盘中量价及资金", "board_spot_observation", "captured_at",
+         "source_at BETWEEN w.until - interval '30 minutes' AND captured_at"),
+        ("板块收盘行情", "board_quote", f"greatest(ingested_at,{close})", "true"),
+        ("板块收盘资金", "board_fund_flow", f"greatest(ingested_at,{close})",
+         "source IN ('ths-close-verified','eastmoney-close-verified')"),
+        ("沪深300行情", "index_quote", f"greatest(ingested_at,{close})", "index_code='000300'"),
+        ("基金净值", "instrument_nav", f"greatest(ingested_at,{close})", "true"),
+        ("交易日历", "trade_calendar", "ingested_at", "true"),
+        ("板块目录", "board", "created_at", "true"),
+        ("基金目录", "instrument", "updated_at", "true"),
+        ("基金映射", "instrument_board", "updated_at", "true"),
+        ("已验证板块预测", "agent_board_forecast", "scored_at", "true"),
+        ("已验证基金预测", "agent_fund_forecast", "scored_at", "true"),
+        ("账户成交", "pod_order", "created_at", "true"),
+        ("账户结算", "pod_decision", "executed_at", "true"),
+        ("已完成研究", "agent_research", "coalesce((payload->>'recorded_at')::timestamptz,as_of)",
+         "report_id IS DISTINCT FROM w.excluded AND payload->>'run_mode'='live'"),
+    )
+    checks = [
+        f"SELECT '{label}' category FROM w WHERE EXISTS (SELECT 1 FROM {db.qualified(table)} "
+        f"WHERE ({stamp})>w.since AND ({stamp})<=w.until AND ({eligible}))"
+        for label, table, stamp, eligible in inputs
+    ]
+    rows = db.query(
+        "WITH w AS (SELECT %s::timestamptz since,%s::timestamptz until,%s::bigint excluded) "
+        + " UNION ALL ".join(checks), [start, through, exclude_report_id],
+    )
+    return [r["category"] for r in rows]
+
+
 def _news(as_of, replay=False):
     rows = db.query(
         f"""
-        SELECT news_id id, title, left(body, 240) excerpt, source, url, published_at
+        SELECT news_id id, title, left(body, 240) excerpt, source, url, published_at, ingested_at
         FROM {db.qualified("news_item")} WHERE published_at BETWEEN %s AND %s AND (%s OR ingested_at <= %s)
           AND (NOT %s OR source<>'chinanews-finance' OR published_at + interval '1 minute' <= %s)
         ORDER BY published_at DESC, news_id DESC LIMIT 500
     """,
         [as_of - timedelta(days=3), as_of, replay, as_of, replay, as_of],
     )
-    return [{**row, "published_at": row["published_at"].isoformat()} for row in rows]
+    result = []
+    for row in rows:
+        observed = row.pop("ingested_at")
+        result.append({**row, "published_at": row["published_at"].isoformat(),
+                       **({"received_at": observed.isoformat()} if not replay else {})})
+    return result
 
 
 def _memory(as_of):
@@ -141,16 +199,34 @@ def _intraday(as_of, session_day, *, include_flow=False):
 
 
 def _account_context(as_of, day, replay=False):
+    balance = None
+    if not replay:
+        balance = db.query_one(
+            f"""SELECT v.trade_date,coalesce(v.cash,p.initial_capital)::float cash,
+                       coalesce(v.total_value,p.initial_capital)::float total_value,
+                       v.drawdown::float drawdown
+                FROM {db.qualified("pod")} p LEFT JOIN LATERAL (
+                    SELECT n.* FROM {db.qualified("pod_nav")} n WHERE n.pod_id=p.pod_id
+                    AND n.trade_date<=%s AND NOT EXISTS (SELECT 1 FROM {db.qualified("pod_decision")} d
+                        WHERE d.pod_id=n.pod_id AND d.trade_date=n.trade_date
+                        AND (d.executed_at IS NULL OR d.executed_at>%s))
+                    ORDER BY n.trade_date DESC LIMIT 1) v ON true
+                WHERE p.strategy_key='agent_manager' AND p.status='active' LIMIT 1""", [day, as_of],
+        )
+        if balance:
+            balance["trade_date"] = str(balance["trade_date"]) if balance["trade_date"] else None
     rows = db.query(
         f"""
         SELECT i.code, i.name, x.weight::float weight, x.trade_date
         FROM {db.qualified("pod_position")} x JOIN {db.qualified("instrument")} i USING(instrument_id)
         JOIN {db.qualified("pod")} p USING(pod_id) WHERE p.strategy_key='agent_manager'
         AND p.status='active' AND x.trade_date=(SELECT max(v.trade_date) FROM {db.qualified("pod_nav")} v
-                                                WHERE v.pod_id=p.pod_id AND v.trade_date <= %s)
+            WHERE v.pod_id=p.pod_id AND v.trade_date <= %s AND (%s OR NOT EXISTS (
+                SELECT 1 FROM {db.qualified("pod_decision")} d WHERE d.pod_id=v.pod_id
+                AND d.trade_date=v.trade_date AND (d.executed_at IS NULL OR d.executed_at>%s))))
         ORDER BY x.weight DESC LIMIT 16
     """,
-        [day],
+        [day, replay, as_of],
     )
     trades = db.query(
         f"""
@@ -162,15 +238,30 @@ def _account_context(as_of, day, replay=False):
     """,
         [replay, as_of, day],
     )
-    previous = db.query(
-        f"""
-        SELECT as_of, payload->>'summary' summary FROM {db.qualified("agent_research")}
-        WHERE as_of < %s AND mode IN ('llm','rules')
-        ORDER BY as_of DESC, report_id DESC LIMIT 2
-    """,
-        [as_of],
-    )
+    if replay:
+        previous = db.query(
+            f"""SELECT as_of,payload->>'summary' summary FROM {db.qualified("agent_research")}
+                WHERE as_of<%s AND mode IN ('llm','rules') ORDER BY as_of DESC,report_id DESC LIMIT 2""",
+            [as_of],
+        )
+    else:
+        midnight = datetime.combine(as_of.date(), time.min, SH)
+        previous = db.query(
+            f"""WITH prior AS (
+                SELECT report_id,as_of,mode,payload,as_of >= %s same_day,
+                       row_number() OVER (PARTITION BY as_of >= %s ORDER BY as_of DESC,report_id DESC) recency
+                FROM {db.qualified("agent_research")} WHERE as_of<%s AND payload->>'run_mode'='live'
+                AND coalesce((payload->>'recorded_at')::timestamptz,as_of)<=%s
+            ) SELECT report_id,as_of,mode,payload->>'summary' summary,payload->>'stance' stance,
+                     payload->'targets' targets,payload->'risks' risks,
+                     (SELECT jsonb_agg(jsonb_build_object('board',b->>'board','intent',b->>'intent','reason',b->>'reason'))
+                      FROM jsonb_array_elements(coalesce(payload->'watchlist','[]'::jsonb)) b) board_views
+              FROM prior
+              WHERE same_day OR recency<=12 ORDER BY as_of DESC,report_id DESC""",
+            [midnight, midnight, as_of, as_of],
+        )
     return {
+        **({"balance": balance} if not replay else {}),
         "holdings": [{**r, "trade_date": str(r["trade_date"])} for r in rows],
         "recent_orders": [{**r, "execute_on": str(r["execute_on"])} for r in trades],
         "prior_research": [{**r, "as_of": r["as_of"].isoformat()} for r in previous],
@@ -190,9 +281,9 @@ def _market(closed, as_of, news, memories, replay=False):
         FROM {db.qualified("board_quote")} q JOIN {db.qualified("board")} b USING(board_id)
         LEFT JOIN {db.qualified("board_fund_flow")} f ON f.board_id=q.board_id AND f.trade_date=q.trade_date
             AND f.period='1d' AND (%s OR (f.ingested_at <= %s AND f.source=ANY(%s)))
-        WHERE b.is_active AND q.trade_date BETWEEN %s AND %s AND (%s OR q.ingested_at <= %s) AND q.close > 0
+        WHERE b.is_active AND q.trade_date BETWEEN %s AND %s AND (%s OR (q.ingested_at <= %s AND b.created_at<=%s)) AND q.close > 0
     """,
-        [replay, as_of, list(market.VERIFIED_FLOWS), first, last, replay, as_of],
+        [replay, as_of, list(market.VERIFIED_FLOWS), first, last, replay, as_of, as_of],
     )
     funds = db.query_df(
         f"""
@@ -203,13 +294,14 @@ def _market(closed, as_of, news, memories, replay=False):
         LEFT JOIN {db.qualified("instrument_nav")} n ON n.instrument_id=i.instrument_id
           AND n.trade_date BETWEEN %s AND %s AND (%s OR n.ingested_at <= %s) AND n.nav > 0
         WHERE b.is_active AND i.is_active AND i.kind='otc'
+          AND (%s OR (ib.updated_at<=%s AND b.created_at<=%s AND i.updated_at<=%s))
           AND (i.listed_on IS NULL OR i.listed_on <= %s)
           AND (ib.source <> 'name-match' OR
                (right(upper(trim(i.name)),1)='C' AND upper(i.name) ~ '(指数|联接|ETF|LOF)'
                 AND strpos(i.name,b.name)>0 AND b.name NOT IN ('综合','其他','其它')))
         ORDER BY b.board_id, i.code, n.trade_date
     """,
-        [first, last, replay, as_of, last],
+        [first, last, replay, as_of, replay, as_of, as_of, as_of, last],
     )
     mapping_counts = funds.groupby("board_id")["code"].nunique().to_dict()
     funds = funds.dropna(subset=["trade_date"])
@@ -721,8 +813,8 @@ def _persist(report, forecasts):
             cur.execute(
                 f"INSERT INTO {db.qualified('agent_report_forecast')} (report_id,forecast_id) "
                 f"SELECT %s,forecast_id FROM {db.qualified('agent_board_forecast')} "
-                "WHERE board_id=%s AND base_date=%s AND horizon_days=%s AND proxy_code=%s",
-                [report_id, f["board_id"], f["base_date"], f["horizon_days"], f["proxy_code"]],
+                "WHERE board_id=%s AND base_date=%s AND horizon_days=%s AND target_date=%s AND proxy_code=%s AND issued_at<=%s",
+                [report_id, f["board_id"], f["base_date"], f["horizon_days"], f["target_date"], f["proxy_code"], report["as_of"]],
             )
         if "fund_forecasts" in report:
             fund_forecasts.persist(
@@ -731,8 +823,9 @@ def _persist(report, forecasts):
     return report_id
 
 
-def generate_research(as_of: datetime, *, live: bool = True) -> dict:
-    return _generate(as_of, live=live, replay=False, use_model=True, strategy_version="v2")
+def generate_research(as_of: datetime, *, live: bool = True, use_model=True, freeze_forecasts=True) -> dict:
+    return _generate(as_of, live=live, replay=False, use_model=use_model, strategy_version="v2",
+                     freeze_forecasts=freeze_forecasts)
 
 
 def _assert_replay_database():
@@ -781,9 +874,10 @@ def generate_replay_research(
         )
 
 
-def _generate(as_of, *, live, replay, use_model, strategy_version):
+def _generate(as_of, *, live, replay, use_model, strategy_version, freeze_forecasts=True):
     as_of = _clock(as_of)
-    closed, base, due = _sessions(as_of)
+    closed, base, due = _sessions(as_of, replay=replay)
+    window = forecast_window(as_of, base, due)
     fresh_clock = abs((datetime.now(SH) - as_of).total_seconds()) < 900
     if replay and base != as_of.date():
         raise ValueError("回放决策日不在已载入的交易日历中")
@@ -827,7 +921,9 @@ def _generate(as_of, *, live, replay, use_model, strategy_version):
         requested = {c["board_id"] for c in tools_used["calls"]}
         pool = _unique(pool + [c for c in candidates if c["board_id"] in requested])
     candidate_ids = {r["board_id"] for r in pool}
-    considered_memories = [m for m in memories if m["board_id"] in candidate_ids][:20]
+    considered_memories = [m for m in memories if m["board_id"] in candidate_ids]
+    if replay:
+        considered_memories = considered_memories[:20]
     if use_behavior:
         behavior_followup.attach(pool, as_of, base)
     features, calibration = {}, {}
@@ -896,6 +992,20 @@ def _generate(as_of, *, live, replay, use_model, strategy_version):
         notes.append("已入库交易日历不足以覆盖所有预测期限。")
     if live and not fresh_clock:
         notes.append("历史研究只作回看，不追补可计分预测和交易目标。")
+    coverage = {
+        "news_screened": len(news),
+        "newest_news_published_at": news[0]["published_at"] if news else None,
+        "latest_news_received_at": max((r["received_at"] for r in news if r.get("received_at")), default=None),
+        "boards_screened": len(candidates),
+        "boards_with_intraday_price": sum(bool(r["intraday"]) for r in candidates),
+        "boards_with_intraday_flow": sum(bool((r["intraday"] or {}).get("capital_flow")) for r in candidates),
+        "latest_spot_captured_at": max((s["captured_at"] for s in snaps.values() if s.get("captured_at")), default=None),
+        "boards_with_close_flow": sum(bool(r.get("capital_flow")) for r in candidates),
+        "verified_sector_forecasts": sum(m["samples"] for m in memories),
+        "prior_reports_read": [r["report_id"] for r in account["prior_research"] if "report_id" in r],
+        "recent_confirmed_orders": len(account["recent_orders"]),
+        "balance_date": (account.get("balance") or {}).get("trade_date"),
+    }
     mode = "rules" if fresh else "insufficient"
     model, model_status = None, "本轮使用量化规则"
     summary_refs = []
@@ -937,7 +1047,7 @@ def _generate(as_of, *, live, replay, use_model, strategy_version):
             "historical_replay": replay,
             "strategy_version": strategy_version,
             "fund_features": features,
-            **({"research_tools": tools_used} if not replay else {}),
+            **({"research_tools": tools_used, "forecast_window": window, "evidence_coverage": coverage} if not replay else {}),
         }
         response, model_status, model = llm.research_opinion(context)
         opinion = _selection(
@@ -1084,9 +1194,17 @@ def _generate(as_of, *, live, replay, use_model, strategy_version):
         report["evidence"]["behavior_screen"] = {
             str(r["board_id"]): r["behavior"]["regime"] for r in candidates
         }
-    report["id"] = _persist(report, forecasts)
-    report["forecasts"] = _forecasts(report["id"], as_of=as_of if replay else None)
-    if use_behavior:
+    if not replay:
+        report["forecast_window"] = window
+        report["evidence"]["evidence_coverage"] = coverage
+        report["recorded_at"] = datetime.now(SH).isoformat()
+    if not freeze_forecasts:
+        report["forecast_publication"] = "draft_estimates"
+        if "fund_forecasts" in report:
+            report["fund_estimates"] = report.pop("fund_forecasts")
+    report["id"] = _persist(report, forecasts if freeze_forecasts else [])
+    report["forecasts"] = _forecasts(report["id"], as_of=as_of)
+    if use_behavior and freeze_forecasts:
         report["fund_forecasts"] = fund_forecasts.for_report(report["id"])
     return report
 
@@ -1108,7 +1226,7 @@ def settle_replay_forecasts(as_of: datetime) -> int:
 
 def _settle(as_of, *, replay):
     as_of = _clock(as_of)
-    closed, _, _ = _sessions(as_of)
+    closed, _, _ = _sessions(as_of, replay=replay)
     if not closed:
         return 0
     forecast = db.qualified("agent_board_forecast")
