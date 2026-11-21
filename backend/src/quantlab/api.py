@@ -10,17 +10,30 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import os
 from typing import Literal
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from quantlab import db, replay_archive, replay_comparison, station
 
 log = logging.getLogger("quantlab.api")
 
-app = FastAPI(title="QuantLab API", version="2.0.0", docs_url="/api/docs", openapi_url="/api/openapi.json")
+PUBLIC_READ_ONLY = os.getenv("QUANTLAB_PUBLIC_READ_ONLY") == "1"
+app = FastAPI(title="QuantLab API", version="2.0.0", docs_url=None if PUBLIC_READ_ONLY else "/api/docs",
+              openapi_url=None if PUBLIC_READ_ONLY else "/api/openapi.json")
+
+
+if PUBLIC_READ_ONLY:
+    @app.middleware("http")
+    async def restrict_public_methods(request, call_next):
+        if request.method not in {"GET", "HEAD"}:
+            return JSONResponse({"detail": "作品集仅展示模拟经理的研究和交易记录。"}, status_code=405,
+                                headers={"Allow": "GET, HEAD"})
+        return await call_next(request)
 
 # 开发期前端跑在 5173/3000，生产由 nginx 反代同源；放开来源省得来回改
 app.add_middleware(
@@ -46,7 +59,8 @@ def health() -> dict:
 
 @app.get("/api/agent/dashboard")
 def agent_dashboard(report_id: int | None = Query(default=None, ge=1)) -> dict:
-    data = station.dashboard(report_id)
+    data = station.dashboard(report_id, public=PUBLIC_READ_ONLY)
+    data["status"]["manual_research_enabled"] = not PUBLIC_READ_ONLY
     if report_id is not None and not data["report"]:
         raise HTTPException(404, "研究报告不存在")
     return data
@@ -67,7 +81,7 @@ def agent_history(kind: Literal["orders", "runs", "events", "forecasts", "fund_f
         raise HTTPException(422, "该筛选仅用于基金净值预测")
     if horizon is not None and horizon not in (1, 5):
         raise HTTPException(422, "支持的预测期限为 1 或 5 个交易日")
-    return station.history(kind, offset, limit, horizon, status)
+    return station.history(kind, offset, limit, horizon, status, public=PUBLIC_READ_ONLY)
 
 
 @app.get("/api/agent/replay")

@@ -584,7 +584,9 @@ export default function Research({ data, revision }) {
         (!id || (!past.loading && !past.error)) && (
           <Panel title="研究报告">
             <Empty>
-              尚无研究报告。点击「运行研究」可使用已入库的资料发起一次分析。
+              {data.status?.manual_research_enabled
+                ? "尚无研究报告。点击「运行研究」可使用已入库的资料发起一次分析。"
+                : "调度器完成首轮分析后会在这里发布研究报告。"}
             </Empty>
           </Panel>
         )

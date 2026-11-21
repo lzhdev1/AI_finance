@@ -271,7 +271,7 @@ export default function App() {
                 />
                 <span>刷新</span>
               </button>
-              {["overview", "journal", "research"].includes(view) && (
+              {data?.status?.manual_research_enabled && ["overview", "journal", "research"].includes(view) && (
                 <button
                   className="primary"
                   onClick={runResearch}

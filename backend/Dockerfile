@@ -2,6 +2,7 @@ FROM python:3.12-slim
 
 # 国内网络可在 build 时覆盖：--build-arg PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
 ARG PIP_INDEX_URL=https://pypi.org/simple
+ARG INSTALL_EXTRAS=[dev]
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -12,7 +13,7 @@ WORKDIR /app
 
 COPY pyproject.toml ./
 RUN mkdir -p src/quantlab && touch src/quantlab/__init__.py \
-    && python -m pip install --index-url "$PIP_INDEX_URL" -e ".[dev]"
+    && python -m pip install --index-url "$PIP_INDEX_URL" -e ".${INSTALL_EXTRAS}"
 
 COPY src ./src
 COPY configs ./configs

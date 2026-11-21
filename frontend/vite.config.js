@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 
 // 开发时把 /api 转到后端容器；生产由 nginx 反代（见 nginx.conf）
 export default defineConfig({
+  base: process.env.VITE_BASE_PATH || "/",
   plugins: [react()],
   server: {
     proxy: {

@@ -61,6 +61,19 @@ def test_manual_queue_restart_and_dashboard(desk, monkeypatch):
     assert station.history("runs", limit=1)["has_more"]
 
 
+def test_public_workbench_hides_raw_pipeline_errors(desk):
+    runs = db.qualified("pipeline_run")
+    db.execute(f"""INSERT INTO {runs}(run_date,phase,status,stats,error) VALUES
+        (current_date,'fund_nav','failed','{{"stage":"collect","warnings":["private diagnostic"]}}',
+         'connection details')""")
+    assert station.history("runs")["items"][0]["error"] == "connection details"
+    assert station.history("events")["items"][0]["detail"] == "connection details"
+    desk_view = station.dashboard(public=True)
+    assert desk_view["runs"][0]["stats"] == {"stage": "collect"}
+    assert "error" not in desk_view["runs"][0]
+    assert desk_view["events"][0]["detail"] == "collect"
+
+
 def test_behavior_is_frozen_only_when_a_board_forecast_is_first_issued(desk):
     from quantlab import research
 

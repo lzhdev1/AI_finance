@@ -358,7 +358,7 @@ export default function Overview({ data, go }) {
             <div className="focus-empty">
               <Compass size={28} />
               <strong>等待首份研究报告</strong>
-              <p>可运行研究，或等调度器完成下一次分析。</p>
+              <p>{data.status?.manual_research_enabled ? "可运行研究，或等调度器完成下一次分析。" : "调度器完成分析后会在这里发布。"}</p>
             </div>
           )}
         </Panel>

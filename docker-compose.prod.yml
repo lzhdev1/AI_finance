@@ -1,0 +1,90 @@
+name: quantlab-portfolio
+
+x-db-env: &db-env
+  TZ: Asia/Shanghai
+  PGHOST: ${QUANTLAB_PGHOST:-shared-postgres}
+  PGPORT: ${QUANTLAB_PGPORT:-5432}
+  PGDATABASE: ${POSTGRES_DB:?Set the QuantLab database in .env}
+  PGUSER: ${POSTGRES_USER:?Set the QuantLab database user in .env}
+  PGPASSWORD: ${POSTGRES_PASSWORD:?Set the QuantLab database password in .env}
+  POSTGRES_DB: ${POSTGRES_DB}
+
+x-backend: &backend
+  image: ${QUANTLAB_BACKEND_IMAGE:-quantlab-portfolio-backend:local}
+  build:
+    context: ./backend
+    args:
+      PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+      INSTALL_EXTRAS: ""
+  environment: *db-env
+  networks:
+    - app
+    - database
+  restart: unless-stopped
+
+services:
+  init:
+    <<: *backend
+    command: python scripts/init_db.py
+    restart: "no"
+
+  api:
+    <<: *backend
+    env_file: .env
+    environment:
+      <<: *db-env
+      QUANTLAB_PUBLIC_READ_ONLY: "1"
+    command: uvicorn quantlab.api:app --host 0.0.0.0 --port 8000
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    networks:
+      app:
+        aliases: [quantlab-portfolio-api]
+      database: {}
+    volumes:
+      - ./data:/app/data:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3).close()"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  scheduler:
+    <<: *backend
+    env_file: .env
+    command: python -m quantlab.scheduler
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+
+  frontend:
+    image: ${QUANTLAB_FRONTEND_IMAGE:-quantlab-portfolio-web:local}
+    build:
+      context: ./frontend
+      args:
+        VITE_BASE_PATH: /fund-manager/
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org}
+    environment:
+      QUANTLAB_API_UPSTREAM: quantlab-portfolio-api
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      app: {}
+      portfolio:
+        aliases: [quantlab-portfolio-web]
+    restart: unless-stopped
+
+networks:
+  app: {}
+  database:
+    external: true
+    name: ${QUANTLAB_DB_NETWORK:-shared-db}
+  portfolio:
+    external: true
+    name: quantlab-portfolio

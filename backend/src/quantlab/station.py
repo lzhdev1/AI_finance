@@ -210,7 +210,7 @@ def decision_research():
         return _research_run(row["run_id"], "decision", refresh_news=True)
 
 
-def history(kind, offset=0, limit=40, horizon=None, status=None):
+def history(kind, offset=0, limit=40, horizon=None, status=None, *, public=False):
     if kind == "fund_forecasts":
         from . import fund_forecasts
         return fund_forecasts.history(offset=offset,limit=limit,horizon=horizon,status=status)
@@ -222,7 +222,14 @@ def history(kind, offset=0, limit=40, horizon=None, status=None):
     if kind == "orders":
         sql = order_sql + " ORDER BY o.execute_on DESC, o.order_id DESC"
     elif kind == "runs":
-        sql = f"SELECT * FROM {runs} ORDER BY run_id DESC"
+        if public:
+            # Raw exception text and arbitrary task stats may contain connection details.
+            sql = f"""SELECT run_id,run_date,phase,started_at,finished_at,status,
+                jsonb_strip_nulls(jsonb_build_object('summary',stats->'summary','stage',stats->'stage',
+                    'steps',stats->'steps','report_id',stats->'report_id','model_status',stats->'model_status')) AS stats
+                FROM {runs} ORDER BY run_id DESC"""
+        else:
+            sql = f"SELECT * FROM {runs} ORDER BY run_id DESC"
     elif kind == "reports":
         sql = f"""SELECT report_id AS id,as_of,data_as_of,mode,payload->>'summary' summary
             FROM {db.qualified("agent_research")} ORDER BY as_of DESC,report_id DESC"""
@@ -245,9 +252,10 @@ def history(kind, offset=0, limit=40, horizon=None, status=None):
             FROM {db.qualified("agent_board_forecast")} WHERE {" AND ".join(conditions)}
             ORDER BY issued_at DESC,board,horizon_days,forecast_id"""
     elif kind == "events":
+        run_detail = "stats->>'summary',stats->>'stage',''" if public else "error,stats->>'summary',stats->>'stage',''"
         sql = f"""SELECT * FROM (
             SELECT started_at ts, 'run' AS kind, phase AS title,
-                   coalesce(error,stats->>'summary',stats->>'stage','') AS detail,
+                   coalesce({run_detail}) AS detail,
                    status, run_id, NULL::int pod_id, run_id AS id FROM {runs}
             UNION ALL
             SELECT e.created_at, 'lifecycle', p.name, e.reason, e.event, NULL, e.pod_id,e.event_id
@@ -266,7 +274,7 @@ def history(kind, offset=0, limit=40, horizon=None, status=None):
     return {"items": queries.clean_rows(rows[:limit]), "has_more": len(rows) > limit}
 
 
-def dashboard(report_id=None):
+def dashboard(report_id=None, *, public=False):
     settings = load_settings()
     result = research.dashboard_payload(report_id)
     manager = db.query_one(f"""SELECT p.pod_id,p.pod_no,p.name,p.initial_capital,
@@ -307,5 +315,5 @@ def dashboard(report_id=None):
         },
         "manager": manager,
         "news": news,
-        **{kind: history(kind)["items"] for kind in ("runs", "events", "orders", "decisions")},
+        **{kind: history(kind, public=public)["items"] for kind in ("runs", "events", "orders", "decisions")},
     }

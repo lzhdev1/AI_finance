@@ -18,6 +18,23 @@ docker compose ps -a
 - 一次性服务 `init` 应以状态 0 退出。它应用幂等表结构并初始化基金主数据。API、调度器和前端持续运行。数据库卷归共享实例管理。
 - 模型使用 OpenAI 兼容接口，读取 `LLM_BASE_URL`、`LLM_API_KEY`、`LLM_MODEL_DEEP`（缺省回退至 `LLM_MODEL_FAST`）、`LLM_TIMEOUT`、`LLM_MAX_TOKENS`。容器内修改 Python 代码后执行 `docker compose restart api scheduler`。修改环境变量后执行 `docker compose up -d --force-recreate api scheduler frontend`。
 
+## 作品集容器部署
+
+生产使用 `docker-compose.prod.yml`，镜像内包含后端代码与配置。作品集网关加入外部 Docker 网络 `quantlab-portfolio`，把 `/fund-manager` 和 `/fund-manager/*` 去掉前缀后代理到 `http://quantlab-portfolio-web:80`。工作台的 API 与静态资源都使用同一子路径，服务只通过容器网络访问。公开 API 仅接受读取请求，自动研究和模拟申赎由调度容器继续执行。
+
+准备共享 PostgreSQL、外部网络和项目根目录的 `.env`。设置 `POSTGRES_DB`、`POSTGRES_USER`、`POSTGRES_PASSWORD` 及模型配置。数据库主机和网络默认分别为 `shared-postgres` 与 `shared-db`，可用 `QUANTLAB_PGHOST`、`QUANTLAB_DB_NETWORK` 覆盖。沿用已有经理时，先把业务库恢复到目标库，并复制 `data/manager-replay/`。每个在线账户只运行一份调度器。
+
+```sh
+docker compose -f docker-compose.prod.yml build api frontend
+docker compose -f docker-compose.prod.yml up -d --no-build
+```
+
+异机构建时设置 `QUANTLAB_BACKEND_IMAGE`、`QUANTLAB_FRONTEND_IMAGE` 为对应版本的镜像标签，目标机用 `docker load` 导入两份镜像后执行第二条命令。已有开发工作台在同机运行时，作品集可以复用该数据库和现有调度器，只需启动公开的两个服务：
+
+```sh
+docker compose -f docker-compose.prod.yml up -d --no-build --no-deps api frontend
+```
+
 ## 在哪里看经理的工作
 
 | 视图 | 可以核对的内容 |
