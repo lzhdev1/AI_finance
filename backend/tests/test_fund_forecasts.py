@@ -126,6 +126,39 @@ def test_online_book_registers_lots_and_separates_receivable_from_nav(monkeypatc
     assert otc.clock("unknown", days)["redemptions_available_date"] == str(days[1])
 
 
+def test_frozen_opportunity_order_and_budget_use_only_confirmed_fills(monkeypatch):
+    from quantlab import opportunity_research
+
+    sessions = list(pd.bdate_range(start=date(2025, 6, 2), periods=27).date)
+    day = sessions[22]
+    as_of = datetime.combine(day, time(14, 52), SH)
+    monkeypatch.setattr(station, "now", lambda: as_of)
+    t = db.qualified
+    db.execute_many(f"INSERT INTO {t('trade_calendar')}(trade_date,ingested_at) VALUES(%s,%s)",
+                    [(d, as_of) for d in sessions])
+    fid = db.query_one(f"INSERT INTO {t('instrument')}(code,name,kind) VALUES('021533','材料设备C','otc') RETURNING instrument_id")["instrument_id"]
+    db.execute_many(f"INSERT INTO {t('instrument_nav')}(instrument_id,trade_date,nav,ingested_at) VALUES(%s,%s,%s,%s)",
+                    [(fid, d, 1 + i / 100, datetime.combine(d, time(20), SH)) for i, d in enumerate(sessions)])
+    pod = pod_store.get_pod(pod_store.create_pod(name="试仓", strategy_key="agent_manager", thesis="",
+                                                 invalidation_rules=[], entry_evidence={}, trade_date=day))
+    fee = {"buy": 0., "sell": [[7, 0.015], [999999, 0.]]}
+    screen = {"version": 1, "application_date": str(day), "closed_sessions": list(map(str, sessions[:22])),
+              "signals": [{"board_id": 1, "board": "半导体", "eligible": True, "signal_date": str(sessions[21]),
+                           "state": "breakout", "evidence": ["放量突破"], "score": 1., "support": 100,
+                           "metrics": {}, "probe_weight": .03, "funds": [{"code": "021533", "name": "材料设备C"}]}],
+              "fund_navs": {"021533": {str(d): 1 + i/100 for i, d in enumerate(sessions[:22])}},
+              "round_trip_fees": {"021533": 0.}, "fee_schedules": {"021533": fee}}
+    report = {"targets": {}, "stance": "reduced", "strategy_version": "v2", "evidence": {"opportunities": screen}}
+    result = runner.plan_pod(pod, day, {}, report)
+    assert result["payload"]["opportunity"]["instruction_submitted"]
+    order, = result["pending"]
+    assert order["opportunity_probe"] and order["amount"] == pytest.approx(3000)
+    assert opportunity_research.monthly_turnover(pod["pod_id"], day)["probe_buys"] == 0
+    assert runner.execute_pod(pod, day)["fills"] == 1
+    assert opportunity_research.monthly_turnover(pod["pod_id"], day)["probe_buys"] == order["amount"]
+    assert runner.plan_pod(pod, day, {}, report)["status"] == "existing"
+
+
 def test_freeze_review_checks_publication_and_receipt_without_counting_its_own_work():
     from quantlab import research
 

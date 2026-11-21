@@ -20,7 +20,7 @@ import pandas as pd
 import psycopg
 from psycopg.types.json import Jsonb
 
-from . import db, decide, execution, manager_v2, otc, pod_store
+from . import db, decide, execution, manager_v2, opportunity, opportunity_research, otc, pod_store
 from .config import load_settings, load_universe
 from .pod_store import assert_legacy_replay_database as assert_replay_database
 from .pods import board_overlap
@@ -210,6 +210,10 @@ def plan_pod(pod: Mapping, market: decide.MarketView | date, universe: dict,
         holdings = account.weights(prices) if complete else {}
         report = research_report or {}
         is_v2 = manager and report.get("strategy_version") == "v2"
+        screen = (report.get("evidence") or {}).get("opportunities") if is_v2 and not replay else None
+        if screen and (screen.get("application_date") != str(day) or screen.get("version") != 1):
+            screen = None
+        probe = None
         hard_stop = False
         research_targets = None
         notes = []
@@ -250,11 +254,53 @@ def plan_pod(pod: Mapping, market: decide.MarketView | date, universe: dict,
                         account, prices, day, targets, previous,
                         report.get("evidence", {}).get("fund_features", {}), hard_stop=hard_stop,
                     )
+                    if not replay and complete:
+                        prior_probe = db.query_one(
+                            f"SELECT payload->'opportunity' AS plan FROM {db.qualified('pod_decision')} "
+                            "WHERE pod_id=%s AND trade_date<%s AND payload ? 'opportunity' "
+                            "ORDER BY trade_date DESC LIMIT 1", [pod_id, day],
+                        )
+                        last = prior_probe['plan'] if prior_probe else None
+                        if not screen and last:
+                            screen = opportunity_research.missing_screen(day)
+                            notes.append("本轮异动研究缺失，仅复核已有试仓的到期日及组合风控。")
+                    if screen and complete:
+                        turnover = opportunity_research.monthly_turnover(pod_id, day)
+                        executable = opportunity.executable_core_targets(
+                            targets, holdings, account.initial_capital, turnover["total"], turnover["probe_buys"]
+                        )
+                        if targets != executable:
+                            notes.append("核心换手额度已耗尽，取消无法成交的核心加仓目标后按实际敞口复核试仓。")
+                        targets, probe = opportunity_research.plan(
+                            screen, account, holdings, executable, prices, day, last,
+                            timing['cash_receivable'], report.get('stance') != 'cash' and not hard_stop,
+                            hard_stop,
+                        )
+                        if probe.get("code"):
+                            code = probe["code"]
+                            schedule = screen["fee_schedules"].get(code)
+                            if not schedule or schedule.get("buy") is None or not schedule.get("sell"):
+                                schedule = (last or {}).get("fee_schedule")
+                            if schedule:
+                                probe["fee_schedule"] = schedule
+                                account.fees[code] = schedule
+                        notes.append("异动试仓：" + probe["reason"])
                     targets, limits = execution.limit_targets(targets)
                     notes.extend(delays + limits)
-                pending, checks = execution.prepare_orders(
-                    account, targets, prices, monthly_turnover_left(pod, day), **timing,
-                )
+                if probe:
+                    pending, checks = opportunity.prepare_orders(
+                        account, targets, prices, monthly_turnover_left(pod, day), probe,
+                        month_probe_buys=turnover['probe_buys'], total_month_turnover=turnover['total'],
+                        isolated_reserve=True, **timing,
+                    )
+                    probe["instruction_submitted"] = any(
+                        o["code"] == probe.get("code") and
+                        ((probe["action"] == "enter" and o.get("opportunity_probe")) or
+                         (probe["action"] == "exit" and o["side"] == "sell")) for o in pending)
+                else:
+                    pending, checks = execution.prepare_orders(
+                        account, targets, prices, monthly_turnover_left(pod, day), **timing,
+                    )
                 if pending and not replay:
                     sessions = otc.sessions(day)
                     for order in pending:
@@ -286,6 +332,7 @@ def plan_pod(pod: Mapping, market: decide.MarketView | date, universe: dict,
                 "spendable_cash": round(max(0, account.cash-timing["cash_receivable"]), 4)}
                if not replay else {}),
             **({"strategy_version": "v2", "research_targets": research_targets, "hard_stop": hard_stop} if is_v2 else {}),
+            **({"opportunity": probe} if probe and proposed is not None else {}),
             "targets": targets if proposed is not None else None, "pending": pending,
             "instructions": pending, "research_id": report.get("id"), "risk_checks": notes,
             "price_as_of": str(prev) if prev else None, "pricing": "otc_nav",

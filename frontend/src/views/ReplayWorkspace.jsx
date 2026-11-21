@@ -5,9 +5,11 @@ import { num, pct, pctAbs } from "../format.js";
 import useResource from "../useResource.js";
 import AccountReplay, { NavComparison } from "./Replay.jsx";
 import Attribution from "./ReplayAttribution.jsx";
+import ReplayOpportunity from "./ReplayOpportunity.jsx";
 
 const sections = [
   ["compare", "两版对比"],
+  ["opportunity", "异动试仓"],
   ["attribution", "逐笔归因"],
   ["daily", "逐日回放"],
 ];
@@ -365,8 +367,8 @@ export default function ReplayWorkspace({ revision }) {
     const url = new URL(window.location.href);
     url.searchParams.set("replay_tab", section);
     url.searchParams.delete("day");
-    if (section === "compare") url.searchParams.delete("version");
-    else url.searchParams.set("version", version);
+    if (section === "daily" || section === "attribution") url.searchParams.set("version", version);
+    else url.searchParams.delete("version");
     window.history.pushState({}, "", url);
     setState({ section, version });
   }
@@ -385,7 +387,7 @@ export default function ReplayWorkspace({ revision }) {
             </button>
           ))}
         </div>
-        {state.section !== "compare" && (
+        {(state.section === "daily" || state.section === "attribution") && (
           <label className="replay-filter">
             回放版本{" "}
             <select
@@ -404,6 +406,8 @@ export default function ReplayWorkspace({ revision }) {
       </div>
       {state.section === "compare" ? (
         <Comparison revision={revision} />
+      ) : state.section === "opportunity" ? (
+        <ReplayOpportunity revision={revision} />
       ) : state.section === "daily" ? (
         <AccountReplay
           key={state.version}

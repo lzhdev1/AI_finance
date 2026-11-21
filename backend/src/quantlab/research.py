@@ -18,6 +18,7 @@ from . import (
     llm,
     manager_v2,
     market,
+    opportunity_research,
     otc,
     pod_store,
     research_tools,
@@ -455,6 +456,12 @@ def _supported_percentages(text, rows, news):
             for k in ("momentum_5", "momentum_20", "flow_ratio", "forecast_factor", "memory_factor")
         ]
         values.append((row.get("intraday") or {}).get("return"))
+        signal = row.get("opportunity") or {}
+        metrics = signal.get("metrics") or {}
+        values.extend(metrics.get(k) for k in ("close_location", "relative_5d", "analog_mean_5d",
+                                              "analog_median_adverse", "analog_hit_rate"))
+        values.extend((signal.get("memory") or {}).get(k) for k in
+                      ("up_rate", "median_adverse_move", "median_favorable_move"))
         for f in row.get("outlooks", []):
             values.extend([f["prob_up"], f["expected_return"]])
             values.append(f.get("raw_prob_up"))
@@ -901,10 +908,19 @@ def _generate(as_of, *, live, replay, use_model, strategy_version, freeze_foreca
     )
     tradable = [r for r in candidates if r["funds"]]
     use_behavior = live and publish and fresh and not replay
+    held = {f["code"]: f["weight"] for f in account["holdings"]}
+    screen = None
+    application_days = [base]
     if use_behavior:
         behavior_policy.annotate(candidates, closed, as_of, base)
+        application_days = otc.next_application_sessions(as_of)
+        screen = opportunity_research.scan(candidates, closed, as_of, application_days, held)
     pool = _unique(candidates[:5] + tradable[:5] + candidates[-2:])
-    held = {f["code"]: f["weight"] for f in account["holdings"]}
+    if screen:
+        leaders = {s["board_id"] for s in screen["signals"][:3]}
+        if screen["candidate"]:
+            leaders.add(screen["candidate"]["board_id"])
+        pool = _unique(pool + [r for r in candidates if r["board_id"] in leaders])
     if strategy_version == "v2":
         incumbents = []
         for c in candidates:
@@ -944,7 +960,6 @@ def _generate(as_of, *, live, replay, use_model, strategy_version, freeze_foreca
         )
         if strategy_version == "v2":
             codes = sorted({f["code"] for r in pool for f in r["funds"]})
-            application_days = otc.next_application_sessions(as_of) if use_behavior else [base]
             application = application_days[0] if application_days else None
             fees = pod_store.fee_book(codes)
             features = manager_v2.fund_inputs(
@@ -1188,6 +1203,7 @@ def _generate(as_of, *, live, replay, use_model, strategy_version, freeze_foreca
         },
     }
     if use_behavior:
+        report["evidence"]["opportunities"] = screen
         report["fund_forecasts"] = fund_forecasts.selected_for_report(
             fund_estimates, watch, targets, account
         )

@@ -201,6 +201,11 @@ def _research_brief(context: dict, *, compact: bool) -> dict:
             )
         }
         card["funds"] = [f["code"] for f in r["funds"]]
+        if r.get("opportunity"):
+            s = r["opportunity"]
+            card["opportunity"] = {k: s.get(k) for k in ("state", "eligible", "evidence",
+                                                           "support", "invalidation", "memory")}
+            refs.append(f"O{r['board_id']}")
         if r.get("fund_outlooks"):
             card["application_clock"] = {
                 v["code"]: {
@@ -485,6 +490,12 @@ def _review_cards(brief):
                 if fee is not None:
                     facts[ref] += f"按可交易日估算，覆盖申赎费用所需涨幅为{fee:.2%}。"
         h = f"H{bid}"
+        if row.get("opportunity"):
+            s = row["opportunity"]
+            facts[f"O{bid}"] = f"{board}：{s['evidence'][0]}{s['invalidation']}"
+            memory = s.get("memory") or {}
+            if memory.get("median_adverse_move") is not None:
+                facts[f"O{bid}"] += f"此前{memory['samples']}次独立观察，五日内最深下探的中位数为{memory['median_adverse_move']:.2%}。"
         if h in row["refs"] and row["behavior"]["regime"] not in ("mixed", "insufficient"):
             facts[h] = f"{board}当前有待验证的交易行为假设为「{row['behavior']['label']}」。"
             previous = row.get("prior_behavior")
@@ -634,6 +645,8 @@ def research_opinion(context: dict) -> tuple[dict | None, str, str | None]:
             "同时比较两个期限的预期、费用和持仓约束。既往研究属于当时的观点，"
             "只有截至决策时已验证的结果才是预测业绩。对信号冲突、缺数或反证说明不确定性。"
             "从追涨买方、原有持有者获利了结、被动调仓等角度比较同一走势。行为解释须引用该板块H材料并写为假设；"
+            "有O材料时，核对异常成交、支撑及失败条件。经验下探幅度是过往样本统计，不能视为即将到来的底部。"
+            "核心配置以外还有最多一笔小额规则试仓；若组合风险不允许试仓可选cash。"
             "市场汇总数据不能识别下单人、操纵意图或资金计划。以反证条件、未来承接强弱及场外申赎时钟决定可行的风险预算。"
             "基金自身净值预测使用U加基金代码引用，和板块F预测分别比较；基金五日预期不足以覆盖费用时暂停新增。"
             "若有prior_behavior，对照上次预先登记的支持和反证条件及当前已公布的观测，说明保留或修正假设的依据。"

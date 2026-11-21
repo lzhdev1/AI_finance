@@ -49,6 +49,19 @@ def test_versioned_read_does_not_mix_archives(tmp_path, monkeypatch):
         replay_archive.version_path("../latest")
 
 
+def test_opportunity_evaluation_keeps_june_audit_when_experiment_is_absent(tmp_path, monkeypatch):
+    monkeypatch.setattr(replay_archive, "ARCHIVE", tmp_path / "latest.json")
+    monkeypatch.setattr(replay_comparison, "CONFIG_DIR", tmp_path)
+    (tmp_path / "replay_june_2026_audit.json").write_text('{"period": "2026-06"}')
+    assert replay_comparison.opportunity_evaluation() == {
+        "status": "empty", "available": False, "june_audit": {"period": "2026-06"},
+    }
+    (tmp_path / "opportunity-evaluation.json").write_text('{"status": "completed", "days": []}')
+    result = replay_comparison.opportunity_evaluation()
+    assert result["available"] and result["status"] == "completed"
+    assert result["days"] == [] and result["june_audit"] == {"period": "2026-06"}
+
+
 def test_paired_predictions_require_same_instrument_endpoint_and_mature_outcome():
     def record(sector, p, hit, ret=0.02, proxy=""):
         return {

@@ -3,7 +3,7 @@ import { ChevronDown } from "lucide-react";
 import { HistoryPage } from "../Archive.jsx";
 import { Table } from "../components.jsx";
 import { dateText, Empty, label, Panel, sourceName, stamp, StateNotice, Tag, TextBlock, yuan } from "../desk.jsx";
-import { forecastDirection, pct, pctAbs } from "../format.js";
+import { forecastDirection, opportunityAction, pct, pctAbs } from "../format.js";
 import useResource from "../useResource.js";
 
 const shanghaiClock = new Intl.DateTimeFormat("zh-CN", {
@@ -84,6 +84,10 @@ function DecisionDetails({ row }) {
   const p = row.payload || {};
   const pub = p.publication;
   const orders = p.instructions || p.pending || [];
+  const probe = p.opportunity;
+  const probeOrder = probe && orders.find((order) => order.code === probe.code &&
+    ((probe.action === "enter" && order.side === "buy" && order.opportunity_probe) ||
+      (probe.action === "exit" && order.side === "sell")));
   const horizons = pub?.forecast_targets;
   const snapshot = pub?.inputs?.snapshot;
   const news = pub?.inputs?.news;
@@ -94,7 +98,8 @@ function DecisionDetails({ row }) {
         <Table headers={["模拟操作", "基金", "申购金额（元）", "赎回份额（份）"]} numeric={[2, 3]}
           rows={orders.map((order) => [
             <Tag value={order.side}>{label(order.side)}</Tag>,
-            <div className="cell-stack"><b>{order.name || order.code}</b>{order.name && <small>{order.code}</small>}</div>,
+            <div className="cell-stack"><b>{order.name || order.code}</b>{order.name && <small>{order.code}</small>}
+              {order.opportunity_probe && <small>异动试仓</small>}</div>,
             order.side === "buy" ? yuan(order.amount) : "—",
             order.side === "sell" ? yuan(order.shares, 6) : "—",
           ])}
@@ -112,6 +117,17 @@ function DecisionDetails({ row }) {
         </TextBlock>
       )}
       <TextBlock title="决策依据">{row.rationale}</TextBlock>
+      {probe && <TextBlock title="异动试仓复核">
+        <strong>{[opportunityAction(probe.action), probe.board, probe.code].filter(Boolean).join(" · ")}</strong>
+        <p>{probe.reason}</p>
+        {probe.rejections?.length > 0 && <details className="evidence-fold">
+          <summary>其他已评估的机会与未采用原因</summary>
+          <ul>{probe.rejections.map((reason, i) => <li key={i}>{reason}</li>)}</ul>
+        </details>}
+        {["enter", "exit"].includes(probe.action) && <p>{probeOrder
+          ? "已生成相应的模拟申赎指令，成交以净值结算记录为准。"
+          : "本次未生成对应的试仓申赎指令，执行约束见本条风控检查。"}</p>}
+      </TextBlock>}
       {(snapshot || responses.length > 0 || news?.warnings?.length > 0) && (
         <TextBlock title="本轮采集回执">
           <ul>

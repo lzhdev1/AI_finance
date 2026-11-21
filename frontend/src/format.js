@@ -1,6 +1,15 @@
 // 展示口径集中在这一点：红涨绿跌、单位、缺值一律 "—"。
 export const isNil = (value) => value === null || value === undefined || Number.isNaN(value);
 
+const opportunityStates = {
+  breakout: "放量突破", retest: "回踩获承接", distribution: "冲高回落，兑现压力上升",
+  breakdown: "跌破支撑", watch: "继续观察", insufficient: "数据不足",
+};
+export const opportunityState = (key) => opportunityStates[key] || key || "未记录";
+
+const opportunityActions = { enter: "申请试仓", exit: "申请退出", hold: "维持试仓", idle: "继续观察" };
+export const opportunityAction = (key) => opportunityActions[key] || key || "未记录";
+
 export function forecastDirection(probability) {
   if (isNil(probability)) return "—";
   return probability > 0.5 ? "看涨" : probability < 0.5 ? "看跌" : "中性";

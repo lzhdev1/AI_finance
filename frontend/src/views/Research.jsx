@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { ChevronDown, Compass, FileText, History } from "lucide-react";
-import { num, pct, pctAbs, pts } from "../format.js";
+import { num, opportunityState, pct, pctAbs, pts } from "../format.js";
 import {
   dateText,
   Empty,
@@ -21,6 +21,7 @@ import { ForecastTable, HistoryPage } from "../Archive.jsx";
 import { SourceLink } from "./Market.jsx";
 import BehaviorReview from "./BehaviorReview.jsx";
 import FundForecasts from "./FundForecasts.jsx";
+import ResearchOpportunities from "./ResearchOpportunities.jsx";
 
 function CapitalFlow({ flow }) {
   if (!flow || flow.net_yuan == null)
@@ -207,6 +208,7 @@ function EvidenceRefs({ refs = [], report }) {
               `F${item.board_id}`,
               `G${item.board_id}`,
               `H${item.board_id}`,
+              `O${item.board_id}`,
             ].includes(ref),
           );
           const story = stories.find((item) => `N${item.id}` === ref);
@@ -230,6 +232,8 @@ function EvidenceRefs({ refs = [], report }) {
             detail = `${row.board} · ${row.outlooks.map((f) => `${f.horizon_days}日上涨概率 ${pctAbs(f.prob_up, 1)}、预期收益 ${pct(f.expected_return)}`).join(" / ")}。${row.forecast_note || ""}`;
           if (row?.behavior && ref.startsWith("H"))
             detail = `${row.board} · ${row.behavior.label}（待验证） · ${row.behavior.risk_reason}`;
+          if (row?.opportunity && ref.startsWith("O"))
+            detail = `${row.board} · ${opportunityState(row.opportunity.state)} · ${(row.opportunity.evidence || []).join(" ")}`;
           if (navForecasts.length)
             detail = `${navForecasts[0].name}（${navForecasts[0].code}） · 本基金单位净值 · ${navForecasts.map((f) =>
               f.prob_up == null ? `${f.horizon_days} 日未形成预测` : `${f.horizon_days} 日上涨概率 ${pctAbs(f.prob_up, 1)}`
@@ -479,6 +483,7 @@ export default function Research({ data, revision }) {
       {report ? (
         <>
           <ResearchNote report={report} />
+          <ResearchOpportunities key={report.id} data={report.evidence?.opportunities} />
           <BehaviorReview key={report.id} items={report.watchlist} published={report.forecasts} />
           <ToolHistory tools={report.evidence?.research_tools} />
           <div className="research-grid">

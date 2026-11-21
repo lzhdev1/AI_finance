@@ -107,6 +107,11 @@ def replay_versions() -> dict:
     return replay_comparison.comparison()
 
 
+@app.get("/api/agent/replay/opportunity")
+def replay_opportunity() -> dict:
+    return replay_comparison.opportunity_evaluation()
+
+
 @app.get("/api/agent/replay/attribution")
 def replay_attribution(version: Literal["v1", "v2"] = "v1") -> dict:
     return replay_comparison.attribution(version)

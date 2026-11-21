@@ -1,0 +1,441 @@
+{
+  "scope": "公开产品资料概要中个人投资者场外C类标准申赎费，赎回档位按持有自然日计，上限不含所列天数。遇未核对的新版资料即停止沿用。",
+  "funds": {
+    "004857": [
+      {
+        "published_on": "2025-06-24",
+        "effective_from": "2025-06-24",
+        "effective_until": "2026-06-04",
+        "source": "https://pdf.dfcfw.com/pdf/H2_AN202506241696590210_1.pdf",
+        "page": 3,
+        "sha256": "19bd6aebada4ddac6ca17de516c17daac55d50dbf28e2a0310ccb77380838d56",
+        "buy": 0.0,
+        "sell": [
+          [
+            7,
+            0.015
+          ],
+          [
+            30,
+            0.001
+          ],
+          [
+            null,
+            0.0
+          ]
+        ]
+      }
+    ],
+    "007882": [
+      {
+        "published_on": "2026-05-19",
+        "effective_from": "2026-05-19",
+        "effective_until": "2026-08-10",
+        "source": "https://pdf.dfcfw.com/pdf/H2_AN202605191822427398_1.pdf",
+        "page": 3,
+        "sha256": "54076420e6a53b1306611bb2f3c3253c22cfc59e853eeb583b4c8507abe22fb3",
+        "buy": 0.0,
+        "sell": [
+          [
+            7,
+            0.015
+          ],
+          [
+            null,
+            0.0
+          ]
+        ]
+      }
+    ],
+    "008089": [
+      {
+        "published_on": "2025-06-30",
+        "effective_from": "2025-06-30",
+        "effective_until": null,
+        "source": "https://pdf.dfcfw.com/pdf/H2_AN202506301700200715_1.pdf",
+        "page": 3,
+        "sha256": "71985aa3fbe60abd76af2a5b8bb9f9eb0f54ab669cac9b42863167aa9f5bc76a",
+        "buy": 0.0,
+        "sell": [
+          [
+            7,
+            0.015
+          ],
+          [
+            30,
+            0.005
+          ],
+          [
+            null,
+            0
+          ]
+        ]
+      }
+    ],
+    "012414": [
+      {
+        "published_on": "2025-05-26",
+        "effective_from": "2025-05-26",
+        "effective_until": null,
+        "source": "https://pdf.dfcfw.com/pdf/H2_AN202505261679316585_1.pdf",
+        "page": 3,
+        "sha256": "ee90ddaf4c390bc95d5f2940ab0f560963a77307fe33e89cd21decf91bcfb25e",
+        "buy": 0.0,
+        "sell": [
+          [
+            7,
+            0.015
+          ],
+          [
+            null,
+            0
+          ]
+        ]
+      }
+    ],
+    "012729": [
+      {
+        "published_on": "2025-11-27",
+        "effective_from": "2025-11-27",
+        "effective_until": "2026-09-20",
+        "source": "https://pdf.dfcfw.com/pdf/H2_AN202511271789153364_1.pdf",
+        "page": 3,
+        "sha256": "93a8c13eba6f26fbffe49a3e88c4770d6626ad8aae4d3ffd9960f2e1b60df3a0",
+        "buy": 0.0,
+        "sell": [
+          [
+            7,
+            0.015
+          ],
+          [
+            30,
+            0.001
+          ],
+          [
+            null,
+            0.0
+          ]
+        ]
+      }
+    ],
+    "012974": [
+      {
+        "published_on": "2025-12-10",
+        "effective_from": "2025-12-10",
+        "effective_until": "2026-09-20",
+        "source": "https://pdf.dfcfw.com/pdf/H2_AN202512101797445362_1.pdf",
+        "page": 3,
+        "sha256": "56af990a515835325aeec60175dddea26065109836be187899a8e0b69136d891",
+        "buy": 0.0,
+        "sell": [
+          [
+            7,
+            0.015
+          ],
+          [
+            30,
+            0.001
+          ],
+          [
+            null,
+            0.0
+          ]
+        ]
+      }
+    ],
+    "014028": [
+      {
+        "published_on": "2026-05-19",
+        "effective_from": "2026-05-19",
+        "effective_until": null,
+        "source": "https://pdf.dfcfw.com/pdf/H2_AN202605191822429047_1.pdf",
+        "page": 4,
+        "sha256": "6cbe1e3022c5507d2402f3d62dd61968ae3f8304aa5357c1c6a5499e70126f08",
+        "buy": 0.0,
+        "sell": [
+          [
+            7,
+            0.015
+          ],
+          [
+            null,
+            0
+          ]
+        ]
+      }
+    ],
+    "016815": [
+      {
+        "published_on": "2025-12-26",
+        "effective_from": "2025-12-26",
+        "effective_until": null,
+        "source": "https://pdf.dfcfw.com/pdf/H2_AN202512251807957094_1.pdf",
+        "page": 3,
+        "sha256": "8557f9473efdcf8a15b366a5beb979791df7681c15a6a0a7b80e80000775f067",
+        "buy": 0.0,
+        "sell": [
+          [
+            7,
+            0.015
+          ],
+          [
+            null,
+            0.0
+          ]
+        ]
+      }
+    ],
+    "016892": [
+      {
+        "published_on": "2025-10-10",
+        "effective_from": "2025-10-10",
+        "effective_until": "2026-08-05",
+        "source": "https://pdf.dfcfw.com/pdf/H2_AN202510101759354907_1.pdf",
+        "page": 3,
+        "sha256": "e86516ef1c1d8bc3c29e82ac0b5e0ba66edf85e565a60a2f616cc0a251d9683d",
+        "buy": 0.0,
+        "sell": [
+          [
+            7,
+            0.015
+          ],
+          [
+            null,
+            0.0
+          ]
+        ]
+      }
+    ],
+    "018301": [
+      {
+        "published_on": "2025-06-30",
+        "effective_from": "2025-06-30",
+        "effective_until": null,
+        "source": "https://pdf.dfcfw.com/pdf/H2_AN202506301700200864_1.pdf",
+        "page": 3,
+        "sha256": "2f38d8a5e8973a172bdd82e03f4d618040285c5e5c9885c0754dd98b03e1577e",
+        "buy": 0.0,
+        "sell": [
+          [
+            7,
+            0.015
+          ],
+          [
+            null,
+            0
+          ]
+        ]
+      }
+    ],
+    "018686": [
+      {
+        "published_on": "2025-12-03",
+        "effective_from": "2025-12-03",
+        "effective_until": "2026-06-25",
+        "source": "https://pdf.dfcfw.com/pdf/H2_AN202512031792743486_1.pdf",
+        "page": 3,
+        "sha256": "d58531a73d5ed880bfc6aa276d1d4d1c0361c5e210fef18cd10d4395d3aa2aeb",
+        "buy": 0.0,
+        "sell": [
+          [
+            7,
+            0.015
+          ],
+          [
+            null,
+            0.0
+          ]
+        ]
+      }
+    ],
+    "020705": [
+      {
+        "published_on": "2026-03-26",
+        "effective_from": "2026-03-26",
+        "effective_until": null,
+        "source": "https://pdf.dfcfw.com/pdf/H2_AN202603261820758027_1.pdf",
+        "page": 3,
+        "sha256": "710a6a8f3045dfaa3ac3a927926a8662c9e692ee32b78b1e7fdd1a881c6a0e57",
+        "buy": 0.0,
+        "sell": [
+          [
+            7,
+            0.015
+          ],
+          [
+            null,
+            0.0
+          ]
+        ]
+      }
+    ],
+    "020900": [
+      {
+        "published_on": "2025-06-27",
+        "effective_from": "2025-06-27",
+        "effective_until": "2026-06-25",
+        "source": "https://pdf.dfcfw.com/pdf/H2_AN202506271698407702_1.pdf",
+        "page": 4,
+        "sha256": "952c8a4713501d26664a44ab3267f4187ae5cb4ce429686c778e8f8dfb6fac3e",
+        "buy": 0.0,
+        "sell": [
+          [
+            7,
+            0.015
+          ],
+          [
+            null,
+            0.0
+          ]
+        ]
+      }
+    ],
+    "020904": [
+      {
+        "published_on": "2025-06-10",
+        "effective_from": "2025-06-10",
+        "effective_until": "2026-05-21",
+        "source": "https://pdf.dfcfw.com/pdf/H2_AN202506101688085106_1.pdf",
+        "page": 3,
+        "sha256": "4b6d788736875979c711b81f2ff59b0d1f3ae1e5b6b5169ff1103138fca1e92e",
+        "buy": 0.0,
+        "sell": [
+          [
+            7,
+            0.015
+          ],
+          [
+            null,
+            0.0
+          ]
+        ]
+      }
+    ],
+    "021533": [
+      {
+        "published_on": "2026-03-10",
+        "effective_from": "2026-03-10",
+        "effective_until": null,
+        "source": "https://pdf.dfcfw.com/pdf/H2_AN202603101820436833_1.pdf",
+        "page": 4,
+        "sha256": "fa3f05a97715bd3438a588ecda45064483bc25ad9f2ad9149edea97a177d6b93",
+        "buy": 0.0,
+        "sell": [
+          [
+            7,
+            0.015
+          ],
+          [
+            null,
+            0
+          ]
+        ]
+      }
+    ],
+    "021622": [
+      {
+        "published_on": "2025-10-10",
+        "effective_from": "2025-10-10",
+        "effective_until": null,
+        "source": "https://pdf.dfcfw.com/pdf/H2_AN202510101759354773_1.pdf",
+        "page": 4,
+        "sha256": "360aac48dc7b0327c27fb3e9b36ee2b9eead30ed6f5a5fd7b1353eebdb84e2ff",
+        "buy": 0.0,
+        "sell": [
+          [
+            7,
+            0.015
+          ],
+          [
+            null,
+            0
+          ]
+        ]
+      }
+    ],
+    "021753": [
+      {
+        "published_on": "2025-06-27",
+        "effective_from": "2025-06-27",
+        "effective_until": null,
+        "source": "https://pdf.dfcfw.com/pdf/H2_AN202506271698381965_1.pdf",
+        "page": 3,
+        "sha256": "cd1b5d0323fe64c116b549e510f4e8afa8e9222d170eec568d2cff5a294cb814",
+        "buy": 0.0,
+        "sell": [
+          [
+            7,
+            0.015
+          ],
+          [
+            null,
+            0
+          ]
+        ]
+      }
+    ],
+    "021964": [
+      {
+        "published_on": "2025-06-27",
+        "effective_from": "2025-06-27",
+        "effective_until": null,
+        "source": "https://pdf.dfcfw.com/pdf/H2_AN202506271698410152_1.pdf",
+        "page": 4,
+        "sha256": "f73c80fa2e4da8d6816fda0dc427e80c323fbf31a6b9ecd57c2ddff5c5a0b946",
+        "buy": 0.0,
+        "sell": [
+          [
+            7,
+            0.015
+          ],
+          [
+            null,
+            0
+          ]
+        ]
+      }
+    ],
+    "025833": [
+      {
+        "published_on": "2025-12-16",
+        "effective_from": "2025-12-16",
+        "effective_until": null,
+        "source": "https://pdf.dfcfw.com/pdf/H2_AN202512161801486480_1.pdf",
+        "page": 3,
+        "sha256": "9b9836ae7e97797a8a4ee46f588210b0b02082d89dfcd22b26a7f7a7f80fd712",
+        "buy": 0.0,
+        "sell": [
+          [
+            7,
+            0.015
+          ],
+          [
+            null,
+            0
+          ]
+        ]
+      }
+    ],
+    "028521": [
+      {
+        "published_on": "2026-07-29",
+        "effective_from": "2026-08-27",
+        "effective_until": null,
+        "source": "https://pdf.dfcfw.com/pdf/H2_AN202607291827441438_1.pdf",
+        "page": 3,
+        "sha256": "2fed8e6a562e488cdcda372029eae369baca83d84e9266f6ee0224c7e0d6e0c3",
+        "buy": 0.0,
+        "sell": [
+          [
+            7,
+            0.015
+          ],
+          [
+            null,
+            0.0
+          ]
+        ]
+      }
+    ]
+  }
+}

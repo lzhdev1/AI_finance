@@ -6,6 +6,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from quantlab import db, replay_archive
+from quantlab.config import CONFIG_DIR
 
 
 def cash_day_reasons(days):
@@ -137,18 +138,27 @@ def _attribution_path(version):
     return replay_archive.version_path(version).with_name(f"{version}-attribution.json")
 
 
-@lru_cache(maxsize=2)
-def _read_attribution(path: Path, stamp):
+@lru_cache(maxsize=4)
+def _read_report(path: Path, stamp):
     return json.loads(path.read_bytes())
 
 
-def attribution(version):
-    path = _attribution_path(version)
+def _optional_report(path):
     try:
         info = path.stat()
+        return _read_report(path, (info.st_mtime_ns, info.st_size, info.st_ino))
     except FileNotFoundError:
-        return {"available": False, "strategy_version": version}
-    return _read_attribution(path, (info.st_mtime_ns, info.st_size, info.st_ino))
+        return None
+
+
+def attribution(version):
+    return _optional_report(_attribution_path(version)) or {"available": False, "strategy_version": version}
+
+
+def opportunity_evaluation():
+    report = _optional_report(replay_archive.ARCHIVE.with_name("opportunity-evaluation.json"))
+    audit = _optional_report(CONFIG_DIR / "replay_june_2026_audit.json")
+    return {**(report or {"status": "empty"}), "available": report is not None, "june_audit": audit}
 
 
 def publish_attribution(version):
