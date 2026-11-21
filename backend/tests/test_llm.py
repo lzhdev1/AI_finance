@@ -51,6 +51,8 @@ def test_deadline_bounds_each_model_attempt_and_is_local_to_the_decision(monkeyp
     from types import SimpleNamespace
 
     monkeypatch.setattr(llm.time, "time", lambda: 100.0)
+    events = []
+    monkeypatch.setattr(llm.usage, "record_event", lambda **event: events.append(event))
     timeouts = []
 
     def post(url, **options):
@@ -64,20 +66,19 @@ def test_deadline_bounds_each_model_attempt_and_is_local_to_the_decision(monkeyp
         assert llm._post([], json_mode=True)[0] is None
     assert llm._post([], json_mode=True)[0] == "{}"
     assert timeouts == [min(3, llm.TIMEOUT), llm.TIMEOUT]
+    assert len(events) == 2
 
 
 def test_truncated_research_retries_with_smaller_evidence_within_configured_budget(monkeypatch):
     import json
     from types import SimpleNamespace
 
-    from quantlab import config
-
     monkeypatch.setattr(llm, "BASE_URL", "https://example.test")
     monkeypatch.setattr(llm, "API_KEY", "test")
     monkeypatch.setenv("LLM_MODEL_DEEP", "unit-test")
     monkeypatch.setenv("LLM_MAX_TOKENS", "450")
     monkeypatch.setattr(
-        config, "load_settings", lambda: SimpleNamespace(llm=SimpleNamespace(enabled=True))
+        llm, "load_settings", lambda: SimpleNamespace(llm=SimpleNamespace(enabled=True))
     )
     article = {
         "id": 23,

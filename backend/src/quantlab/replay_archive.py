@@ -9,7 +9,7 @@ from collections import Counter, defaultdict
 from functools import lru_cache
 from pathlib import Path
 
-from quantlab import db
+from quantlab import db, usage
 from quantlab.config import CONFIG_DIR, DATA_DIR
 from quantlab.replay_verification import list_verifications
 
@@ -404,5 +404,10 @@ def publish(pod, sessions, *, path=None):
             "沪深300采用价格指数，自期初前一交易日收盘归一。最大回撤取每日收盘资产相对历史峰值的最大跌幅。",
         ],
     }
-    write_snapshot(path or ARCHIVE, {"summary": summary, "days": days[::-1]})
+    file = path or ARCHIVE
+    metered = usage.replay_snapshot()
+    archive = {"summary": summary, "days": days[::-1]}
+    if metered:
+        archive["usage"] = metered
+    write_snapshot(file, archive)
     return summary

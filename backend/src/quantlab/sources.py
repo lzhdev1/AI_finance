@@ -23,6 +23,8 @@ from datetime import date, datetime
 
 import pandas as pd
 
+from . import usage
+
 log = logging.getLogger(__name__)
 
 # 命中这些关键字就认为是限流/断连，立即中止本轮
@@ -59,11 +61,15 @@ THROTTLE = Throttle(
 )
 
 
-def _call(func, **kwargs):
+def _call(func, provider, operation, **kwargs):
     """带限速的单次外部调用。限流直接抛出，不做重试。"""
     THROTTLE.wait()
     try:
-        return func(**kwargs)
+        with usage.attempt(
+            kind="data", provider=provider, operation=operation,
+            detail="按 AKShare 适配器调用计数，内部缓存、分页和重试未逐次计量。",
+        ):
+            return func(**kwargs)
     except Exception as exc:  # noqa: BLE001
         text = f"{type(exc).__name__}: {exc}"
         if any(hint in text for hint in _RATE_LIMIT_HINTS):
@@ -107,7 +113,7 @@ def _to_num(series: pd.Series) -> pd.Series:
 def fetch_trade_calendar() -> pd.DataFrame:
     import akshare as ak
 
-    df = _call(ak.tool_trade_date_hist_sina)
+    df = _call(ak.tool_trade_date_hist_sina, "新浪财经", "读取交易日历")
     frame = _rename(df, {"trade_date": ("trade_date", "日期")})
     frame["trade_date"] = _to_date(frame["trade_date"])
     return frame.dropna().drop_duplicates().sort_values("trade_date").reset_index(drop=True)
@@ -120,13 +126,14 @@ def fetch_fund_nav(code: str, since: date | None = None, preferred: str = "eastm
 
     import requests
 
-    def get(url, **kwargs):
+    def get(url, operation, **kwargs):
         THROTTLE.wait()
-        response = requests.get(url, timeout=(4, 12), headers={"Referer": "https://fundf10.eastmoney.com/"}, **kwargs)
-        if response.status_code == 429:
-            raise RateLimited("东方财富净值源限流")
-        response.raise_for_status()
-        return response
+        with usage.attempt(kind="data", provider="东方财富", operation=operation, detail="基金净值 HTTP GET 请求。"):
+            response = requests.get(url, timeout=(4, 12), headers={"Referer": "https://fundf10.eastmoney.com/"}, **kwargs)
+            if response.status_code == 429:
+                raise RateLimited("东方财富净值源限流")
+            response.raise_for_status()
+            return response
 
     def history():
         rows = []
@@ -135,7 +142,7 @@ def fetch_fund_nav(code: str, since: date | None = None, preferred: str = "eastm
             params = {"fundCode": code, "pageIndex": page, "pageSize": 100}
             if since is not None:
                 params["sdate"] = since.isoformat()
-            result = get("https://api.fund.eastmoney.com/f10/lsjz", params=params).json()
+            result = get("https://api.fund.eastmoney.com/f10/lsjz", "读取基金净值明细", params=params).json()
             if str(result.get("ErrCode", "0")) != "0":
                 raise ValueError("净值明细接口返回错误")
             batch = result["Data"]["LSJZList"]
@@ -148,7 +155,7 @@ def fetch_fund_nav(code: str, since: date | None = None, preferred: str = "eastm
         return pd.DataFrame(rows, columns=["trade_date", "nav", "acc_nav"])
 
     def published_chart():
-        script = get(f"https://fund.eastmoney.com/pingzhongdata/{code}.js").text
+        script = get(f"https://fund.eastmoney.com/pingzhongdata/{code}.js", "读取基金净值走势").text
 
         def series(name):
             match = re.search(r"\bvar\s+" + name + r"\s*=\s*(\[[^;]*?\])\s*;", script)
@@ -188,7 +195,7 @@ def fetch_fund_list() -> pd.DataFrame:
     """全市场基金名录，用于扩充基金池（按名称/类型筛 C 类指数基金）。"""
     import akshare as ak
 
-    df = _call(ak.fund_name_em)
+    df = _call(ak.fund_name_em, "东方财富", "读取基金名录")
     frame = _rename(
         df,
         {"code": ("基金代码",), "name": ("基金简称",), "fund_type": ("基金类型",), "pinyin": ("拼音缩写",)},
@@ -204,7 +211,7 @@ def fetch_boards(kind: str = "industry") -> pd.DataFrame:
     import akshare as ak
 
     func = ak.stock_board_industry_name_em if kind == "industry" else ak.stock_board_concept_name_em
-    df = _call(func)
+    df = _call(func, "东方财富", "读取板块目录")
     frame = _rename(df, {"code": ("板块代码", "代码"), "name": ("板块名称", "名称")})
     frame = frame.dropna(subset=["code", "name"])
     frame["code"] = frame["code"].astype(str).str.strip()
@@ -218,7 +225,7 @@ def fetch_board_hist(name: str, start: str, end: str) -> pd.DataFrame:
     import akshare as ak
 
     df = _call(
-        ak.stock_board_industry_hist_em,
+        ak.stock_board_industry_hist_em, "东方财富", "读取行业板块日线",
         symbol=name,
         period="日k",
         start_date=start,
@@ -251,7 +258,7 @@ def fetch_board_hist_concept(name: str, start: str, end: str) -> pd.DataFrame:
     import akshare as ak
 
     df = _call(
-        ak.stock_board_concept_hist_em,
+        ak.stock_board_concept_hist_em, "东方财富", "读取概念板块日线",
         symbol=name,
         period="daily",
         start_date=start,
@@ -287,7 +294,7 @@ def fetch_board_flow_rank(indicator: str = "今日", sector_type: str = "行业�
     """板块资金流排行榜（当日截面）。indicator: 今日 / 5日 / 10日。"""
     import akshare as ak
 
-    df = _call(ak.stock_sector_fund_flow_rank, indicator=indicator, sector_type=sector_type)
+    df = _call(ak.stock_sector_fund_flow_rank, "东方财富", "读取板块资金流", indicator=indicator, sector_type=sector_type)
     frame = _rename(
         df,
         {
@@ -312,7 +319,7 @@ def fetch_market_flow() -> pd.DataFrame:
     """大盘资金流历史。"""
     import akshare as ak
 
-    df = _call(ak.stock_market_fund_flow)
+    df = _call(ak.stock_market_fund_flow, "东方财富", "读取市场资金流")
     frame = _rename(
         df,
         {
@@ -340,7 +347,7 @@ def fetch_index_daily(code: str = "000300", start: str = "20150101", end: str = 
 
     try:
         df = _call(
-            ak.index_zh_a_hist, symbol=code, period="daily", start_date=start, end_date=end
+            ak.index_zh_a_hist, "东方财富", "读取基准指数日线", symbol=code, period="daily", start_date=start, end_date=end
         )
         frame = _rename(df, {"trade_date": ("日期",), "close": ("收盘",), "pct_chg": ("涨跌幅",)})
         frame["source"] = "eastmoney"
@@ -367,7 +374,7 @@ def _index_from_sina(ak, code: str) -> pd.DataFrame:
         symbol = f"sz{code}"
     else:
         symbol = f"sh{code}"
-    df = _call(ak.stock_zh_index_daily, symbol=symbol)
+    df = _call(ak.stock_zh_index_daily, "新浪财经", "读取基准指数日线", symbol=symbol)
     frame = _rename(df, {"trade_date": ("date", "日期"), "close": ("close", "收盘")})
     frame["trade_date"] = _to_date(frame["trade_date"])
     frame["close"] = _to_num(frame["close"])
@@ -386,7 +393,7 @@ def fetch_news_cls() -> pd.DataFrame:
     """财联社电报。接口返回标题可能为空，正文里带【标题】前缀。"""
     import akshare as ak
 
-    df = _call(ak.stock_info_global_cls, symbol="全部")
+    df = _call(ak.stock_info_global_cls, "财联社", "抓取财经电报", symbol="全部")
     rows = []
     for item in df.to_dict(orient="records"):
         title = str(item.get("标题") or "").strip()
@@ -415,7 +422,7 @@ def fetch_news_em() -> pd.DataFrame:
     """东方财富财经快讯。"""
     import akshare as ak
 
-    df = _call(ak.stock_info_global_em)
+    df = _call(ak.stock_info_global_em, "东方财富", "抓取财经快讯")
     rows = []
     for item in df.to_dict(orient="records"):
         published = _combine(pd.to_datetime(item.get("发布时间"), errors="coerce"))
@@ -484,7 +491,7 @@ def fetch_boards_ths(kind: str = "industry") -> pd.DataFrame:
     import akshare as ak
 
     func = ak.stock_board_industry_name_ths if kind == "industry" else ak.stock_board_concept_name_ths
-    frame = _call(func)
+    frame = _call(func, "同花顺", "读取板块目录")
     out = _rename(frame, _THS_BOARD_COLUMNS)
     out["kind"] = kind
     return out[["code", "name", "kind"]].dropna(subset=["name"])
@@ -499,7 +506,7 @@ def fetch_board_hist_ths(name: str, kind: str, start: str, end: str) -> pd.DataF
         if kind == "industry"
         else ak.stock_board_concept_index_ths
     )
-    frame = _call(func, symbol=name, start_date=start, end_date=end)
+    frame = _call(func, "同花顺", "读取板块日线", symbol=name, start_date=start, end_date=end)
     empty = pd.DataFrame(
         columns=["trade_date", "open", "high", "low", "close", "pct_chg", "amount", "volume"]
     )
@@ -520,7 +527,7 @@ def fetch_board_flow_ths(kind: str = "industry", period: str = "1d") -> pd.DataF
     import akshare as ak
 
     func = ak.stock_fund_flow_industry if kind == "industry" else ak.stock_fund_flow_concept
-    frame = _call(func, symbol={"1d": "即时", "5d": "5日排行", "10d": "10日排行"}[period])
+    frame = _call(func, "同花顺", "读取板块资金流", symbol={"1d": "即时", "5d": "5日排行", "10d": "10日排行"}[period])
     out = _rename(
         frame,
         {

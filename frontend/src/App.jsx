@@ -17,6 +17,7 @@ import {
   PanelLeftClose,
   Play,
   RefreshCw,
+  ReceiptText,
   History,
   X,
 } from "lucide-react";
@@ -27,6 +28,7 @@ import Overview from "./views/Overview.jsx";
 import Research from "./views/Research.jsx";
 import Replay from "./views/ReplayWorkspace.jsx";
 import Market from "./views/Market.jsx";
+import Usage from "./views/Usage.jsx";
 import DecisionHistory, { useCurrentDecision } from "./views/Decisions.jsx";
 import {
   Forecasts,
@@ -59,6 +61,7 @@ const pages = [
   { id: "forecasts", name: "板块与基金预测", icon: ChartCandlestick },
   { id: "ledger", name: "组合账本", icon: BriefcaseBusiness },
   { id: "replay", name: "策略回放", icon: History },
+  { id: "usage", name: "用量与费用", icon: ReceiptText },
 ];
 const oldViews = {
   pods: "ledger",
@@ -178,7 +181,7 @@ export default function App() {
   const page = parentPage(view);
   const online = decisionsOpen ? decision.data?.scheduler_online : data?.status?.scheduler_online;
   const syncedAt = decisionsOpen ? decision.data?.as_of : data?.status?.now;
-  const nav = pages.map((item) => (
+  const nav = pages.filter((item) => item.id !== "usage" || data?.status?.usage_enabled !== false).map((item) => (
     <button
       key={item.id}
       onClick={() => go(item.id)}
@@ -349,6 +352,7 @@ export default function App() {
               )}
               {view === "ledger" && <Ledger data={data} revision={revision} />}
               {view === "memory" && <Memory data={data} />}
+              {view === "usage" && <Usage enabled={data.status?.usage_enabled !== false} revision={revision} />}
               {view === "journal" && (
                 <Journal data={data} revision={revision} />
               )}

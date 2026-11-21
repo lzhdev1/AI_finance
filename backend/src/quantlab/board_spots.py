@@ -12,7 +12,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 from bs4 import BeautifulSoup
 
-from . import db
+from . import db, usage
 
 SH = ZoneInfo("Asia/Shanghai")
 log = logging.getLogger(__name__)
@@ -103,7 +103,7 @@ def fetch_ths(as_of, read):
             return None
 
     with ThreadPoolExecutor(max_workers=4) as workers:
-        return pd.DataFrame(row for row in workers.map(fetch, boards) if row)
+        return pd.DataFrame(row for row in workers.map(usage.wrap(fetch), boards) if row)
 
 
 def save(frame, captured_at):

@@ -13,11 +13,12 @@ import re
 import time
 from contextlib import contextmanager
 from contextvars import ContextVar
+from datetime import datetime, timezone
 from typing import Any
 
 import requests
 
-from . import db
+from . import db, llm_meter, usage
 from .config import load_settings
 
 log = logging.getLogger(__name__)
@@ -110,6 +111,7 @@ def _post(
     model: str | None = None,
     retries: int = RETRIES,
     concise_json: bool = False,
+    operation: str = "决策说明",
 ) -> tuple[str | None, str]:
     """返回 (内容, finish_reason)。内容为 None 表示调用失败。"""
     payload: dict[str, Any] = {
@@ -130,6 +132,10 @@ def _post(
         timeout = min(TIMEOUT, deadline - time.time()) if deadline is not None else TIMEOUT
         if timeout <= 0:
             return None, "已到盘中研究截止时间"
+        started = datetime.now(timezone.utc)
+        body = None
+        success = False
+        finish = ""
         try:
             response = requests.post(
                 f"{BASE_URL}/chat/completions",
@@ -140,12 +146,32 @@ def _post(
             if response.status_code != 200:
                 log.warning("LLM HTTP %s", response.status_code)
                 failure = f"HTTP {response.status_code}"
+                try:
+                    body = response.json()
+                except ValueError:
+                    pass
             else:
-                choice = response.json()["choices"][0]
-                return choice["message"].get("content") or "", choice.get("finish_reason") or ""
+                body = response.json()
+                choice = body["choices"][0]
+                content, finish = choice["message"].get("content") or "", choice.get("finish_reason") or ""
+                success = True
+                return content, finish
         except Exception as exc:  # noqa: BLE001 网络问题不该中断决策
             log.warning("LLM 调用失败（第 %s 次）：%s", attempt + 1, type(exc).__name__)
             failure = type(exc).__name__
+        finally:
+            # A ledger failure must never re-submit a paid completion or suppress its result.
+            try:
+                fields = llm_meter.measure(BASE_URL, payload["model"], body, started, datetime.now(timezone.utc))
+                detail = f"第 {attempt + 1} 次请求"
+                if not success:
+                    detail += f" · {failure}"
+                elif finish == "length":
+                    detail += " · 输出达到 token 上限"
+                usage.record_event(kind="llm", operation=operation, model=payload["model"],
+                                   status="success" if success else "error", detail=detail, **fields)
+            except Exception as exc:  # noqa: BLE001 运行费记账与模型调用的重试生命周期独立
+                log.warning("LLM 用量记录失败：%s", type(exc).__name__)
         if attempt < retries:
             time.sleep(min(1.5, max(0, deadline - time.time())) if deadline is not None else 1.5)
     return None, failure
@@ -394,6 +420,7 @@ def research_queries(candidates, account, news):
         max_tokens=max(1, min(4000, int(os.getenv("LLM_MAX_TOKENS", "4000")))),
         model=model,
         retries=0,
+        operation="工具选择",
     )
     if not raw or finish == "length":
         return [], f"工具选择未完成（{finish or '空响应'}）"
@@ -562,6 +589,7 @@ def _review_opinion(context, model, budget, json_mode):
         model=model,
         retries=0,
         concise_json=True,
+        operation="投研复核",
     )
     if not raw or finish == "length":
         return None, f"证据选项复核未完成（{finish or '空响应'}），使用量化规则", model
@@ -685,6 +713,7 @@ def research_opinion(context: dict) -> tuple[dict | None, str, str | None]:
             model=model,
             retries=0,
             concise_json=compact and not replay,
+            operation=("回放精简复核" if compact else "回放分析") if replay else "投研分析",
         )
         if finish == "length" and not replay:
             return None, LIVE_TRUNCATED, model
@@ -766,7 +795,7 @@ def narrate(card: dict) -> str | None:
     text = _parse_narrative(raw)
     if text is None and finish == "length":
         log.info("输出被长度限制截断，提高预算重试一次")
-        raw, finish = _post(messages, json_mode=True, max_tokens=RETRY_TOKENS)
+        raw, finish = _post(messages, json_mode=True, max_tokens=RETRY_TOKENS, operation="决策说明重试")
         text = _parse_narrative(raw) if raw else None
     if not text:
         log.warning("LLM 未产出可用叙述（finish=%s）：%s", finish, (raw or "")[:160])

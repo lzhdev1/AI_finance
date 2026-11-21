@@ -17,7 +17,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 from psycopg.types.json import Jsonb
 
-from . import db, realtime, sources
+from . import db, realtime, sources, usage
 from .config import load_settings
 
 log = logging.getLogger(__name__)
@@ -37,7 +37,8 @@ def phase(name: str, run_date: date | None = None) -> Iterator[dict]:
     status = "success"
     error: str | None = None
     try:
-        yield stats
+        with usage.scope(name, run_id, inherit=True):
+            yield stats
         if stats.get("warnings"):
             status = "partial"
     except sources.RateLimited as exc:

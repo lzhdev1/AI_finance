@@ -21,10 +21,11 @@ import logging
 import time
 import urllib.request
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlsplit
 
 import pandas as pd
 
-from . import board_spots, db
+from . import board_spots, db, usage
 
 log = logging.getLogger(__name__)
 
@@ -45,14 +46,24 @@ INDEX_CODES = {
 }
 INDEX_NAMES = {"000001": "上证指数", "399001": "深证成指", "399006": "创业板指", "000300": "沪深300"}
 
+_QUOTE_FEEDS = {
+    "push2.eastmoney.com": ("东方财富", "读取板块盘中行情"),
+    "vip.stock.finance.sina.com.cn": ("新浪财经", "读取行业盘中行情"),
+    "hq.sinajs.cn": ("新浪财经", "读取指数盘中行情"),
+    "q.10jqka.com.cn": ("同花顺", "核对概念板块行情代码"),
+    "d.10jqka.com.cn": ("同花顺", "读取板块分时行情"),
+}
+
 
 def _get(url: str, referer: str, encoding: str = "utf-8", timeout: int = 10) -> str:
     request = urllib.request.Request(
         url,
         headers={"User-Agent": USER_AGENT, "Referer": referer, "Accept": "*/*"},
     )
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        return response.read().decode(encoding, errors="replace")
+    provider, operation = _QUOTE_FEEDS.get(urlsplit(url).hostname, ("公开行情源", "读取盘中行情"))
+    with usage.attempt(kind="data", provider=provider, operation=operation, detail="行情 HTTP GET 请求。"):
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return response.read().decode(encoding, errors="replace")
 
 
 def fetch_board_spot(page_size: int = 100, max_pages: int = 8) -> pd.DataFrame:

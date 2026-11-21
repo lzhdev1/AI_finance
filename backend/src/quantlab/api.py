@@ -18,11 +18,12 @@ from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from quantlab import db, decision_status, replay_archive, replay_comparison, station
+from quantlab import db, decision_status, replay_archive, replay_comparison, station, usage
 
 log = logging.getLogger("quantlab.api")
 
 PUBLIC_READ_ONLY = os.getenv("QUANTLAB_PUBLIC_READ_ONLY") == "1"
+PUBLIC_USAGE = os.getenv("QUANTLAB_PUBLIC_USAGE") == "1"
 app = FastAPI(title="QuantLab API", version="2.0.0", docs_url=None if PUBLIC_READ_ONLY else "/api/docs",
               openapi_url=None if PUBLIC_READ_ONLY else "/api/openapi.json")
 
@@ -61,8 +62,32 @@ def health() -> dict:
 def agent_dashboard(report_id: int | None = Query(default=None, ge=1)) -> dict:
     data = station.dashboard(report_id, public=PUBLIC_READ_ONLY)
     data["status"]["manual_research_enabled"] = not PUBLIC_READ_ONLY
+    data["status"]["usage_enabled"] = not PUBLIC_READ_ONLY or PUBLIC_USAGE
     if report_id is not None and not data["report"]:
         raise HTTPException(404, "研究报告不存在")
+    return data
+
+
+@app.get("/api/agent/usage")
+def manager_usage(response: Response, days: Literal["1", "7", "30", "all"] = "30",
+                  report_id: int | None = Query(default=None, ge=1),
+                  kind: Literal["all", "llm", "search", "data", "tool"] = "all",
+                  offset: int = Query(0, ge=0), limit: int = Query(30, ge=1, le=200)) -> dict:
+    if PUBLIC_READ_ONLY and not PUBLIC_USAGE:
+        raise HTTPException(403, "此公开工作台未开放用量与费用")
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        data = usage.dashboard(days, report_id, kind, offset, limit)
+    except LookupError as exc:
+        raise HTTPException(404, "研究报告不存在") from exc
+    if days == "all" and report_id is None and kind == "all":
+        archives = []
+        for version in ("v1", "v2"):
+            snapshot = replay_archive.current(replay_archive.version_path(version))
+            archives.append({"version": version, "total_reports": len(snapshot['summary'].get("history") or []),
+                             "summary": (snapshot.get("usage") or {}).get("summary"),
+                             "tracked_reports": (snapshot.get("usage") or {}).get("tracked_reports", 0)})
+        data["replay_archives"] = archives
     return data
 
 

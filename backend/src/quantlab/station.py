@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 import psycopg
 from psycopg.types.json import Jsonb
 
-from . import board_spots, db, ingest, llm, pod_store, queries, research
+from . import board_spots, db, ingest, llm, pod_store, queries, research, usage
 from .config import load_settings
 
 log = logging.getLogger(__name__)
@@ -141,6 +141,11 @@ def _research_worker_lock():
 
 
 def _research_run(run_id, trigger, refresh_news):
+    with usage.scope("agent_research", run_id):
+        return _run_scoped_research(run_id, trigger, refresh_news)
+
+
+def _run_scoped_research(run_id, trigger, refresh_news):
     run_table = db.qualified("pipeline_run")
     stats = {"trigger": trigger, "steps": []}
 

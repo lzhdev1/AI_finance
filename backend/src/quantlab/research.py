@@ -22,6 +22,7 @@ from . import (
     otc,
     pod_store,
     research_tools,
+    usage,
 )
 from .config import load_settings
 from .costs import holding_rate
@@ -114,15 +115,14 @@ def decision_evidence_since(start, through, *, exclude_report_id=None):
 
 
 def _news(as_of, replay=False):
-    rows = db.query(
-        f"""
+    with usage.attempt(kind="search", provider="本地研究库", operation="筛选近期已入库新闻",
+                       cost_basis="no_charge", detail="本地 PostgreSQL 查询，无独立 API 费"):
+        rows = db.query(f"""
         SELECT news_id id, title, left(body, 240) excerpt, source, url, published_at, ingested_at
         FROM {db.qualified("news_item")} WHERE published_at BETWEEN %s AND %s AND (%s OR ingested_at <= %s)
           AND (NOT %s OR source<>'chinanews-finance' OR published_at + interval '1 minute' <= %s)
         ORDER BY published_at DESC, news_id DESC LIMIT 500
-    """,
-        [as_of - timedelta(days=3), as_of, replay, as_of, replay, as_of],
-    )
+        """, [as_of - timedelta(days=3), as_of, replay, as_of, replay, as_of])
     result = []
     for row in rows:
         observed = row.pop("ingested_at")
@@ -777,6 +777,7 @@ def _persist(report, forecasts):
             [report["as_of"], report["data_as_of"], report["mode"], Jsonb(report)],
         )
         report_id = cur.fetchone()["report_id"]
+        usage.attach_report(conn, report_id)
         for f in forecasts:
             cur.execute(
                 f"""
@@ -831,8 +832,9 @@ def _persist(report, forecasts):
 
 
 def generate_research(as_of: datetime, *, live: bool = True, use_model=True, freeze_forecasts=True) -> dict:
-    return _generate(as_of, live=live, replay=False, use_model=use_model, strategy_version="v2",
-                     freeze_forecasts=freeze_forecasts)
+    with usage.scope("agent_research", inherit=True):
+        return _generate(as_of, live=live, replay=False, use_model=use_model, strategy_version="v2",
+                         freeze_forecasts=freeze_forecasts)
 
 
 def _assert_replay_database():
@@ -876,9 +878,10 @@ def generate_replay_research(
                 "id": existing["report_id"],
                 "forecasts": _forecasts(existing["report_id"], as_of=as_of),
             }
-        return _generate(
-            as_of, live=False, replay=True, use_model=use_model, strategy_version=strategy_version
-        )
+        with usage.scope("historical_replay"):
+            return _generate(
+                as_of, live=False, replay=True, use_model=use_model, strategy_version=strategy_version
+            )
 
 
 def _generate(as_of, *, live, replay, use_model, strategy_version, freeze_forecasts=True):

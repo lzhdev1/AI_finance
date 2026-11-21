@@ -67,3 +67,44 @@ CREATE TABLE IF NOT EXISTS agent_report_fund_forecast (
     forecast_id bigint NOT NULL REFERENCES agent_fund_forecast(forecast_id),
     PRIMARY KEY (report_id, forecast_id)
 );
+
+-- Actual service calls are metered by wall-clock time, independently of simulated NAV dates.
+CREATE TABLE IF NOT EXISTS usage_tracking (
+    singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
+    started_at timestamptz NOT NULL DEFAULT clock_timestamp()
+);
+INSERT INTO usage_tracking(singleton) VALUES (true) ON CONFLICT DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS agent_usage_event (
+    id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    occurred_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    context_id uuid NOT NULL,
+    run_id bigint,
+    scope text NOT NULL,
+    kind text NOT NULL CHECK (kind IN ('llm','search','data','tool')),
+    provider text NOT NULL,
+    operation text NOT NULL,
+    model text,
+    status text NOT NULL CHECK (status IN ('success','error')),
+    input_tokens bigint CHECK (input_tokens >= 0),
+    output_tokens bigint CHECK (output_tokens >= 0),
+    total_tokens bigint CHECK (total_tokens >= 0),
+    cached_tokens bigint CHECK (cached_tokens >= 0),
+    reasoning_tokens bigint CHECK (reasoning_tokens >= 0),
+    cost_basis text NOT NULL CHECK (cost_basis IN ('reported','estimated','no_charge','unknown')),
+    amount numeric CHECK (amount >= 0),
+    currency text CHECK (currency ~ '^[A-Z]{3}$'),
+    price_note text,
+    source_url text,
+    detail text,
+    CHECK ((cost_basis IN ('reported','estimated') AND amount IS NOT NULL AND currency IS NOT NULL)
+        OR (cost_basis='unknown' AND amount IS NULL AND currency IS NULL)
+        OR (cost_basis='no_charge' AND amount=0 AND amount IS NOT NULL AND currency IS NULL))
+);
+CREATE INDEX IF NOT EXISTS usage_by_time ON agent_usage_event(occurred_at DESC,id DESC);
+CREATE INDEX IF NOT EXISTS usage_by_context ON agent_usage_event(context_id);
+
+CREATE TABLE IF NOT EXISTS agent_usage_report (
+    report_id bigint PRIMARY KEY REFERENCES agent_research(report_id) ON DELETE CASCADE,
+    context_id uuid NOT NULL UNIQUE
+);

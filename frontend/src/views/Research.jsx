@@ -452,6 +452,11 @@ export default function Research({ data, revision }) {
         >
           {archive ? "收起档案" : "浏览全部报告"}
         </button>
+        {report?.id && data.status?.usage_enabled !== false && (
+          <a className="report-link" href={`?view=usage&report=${report.id}`}>
+            本报告用量与费用 ↗
+          </a>
+        )}
       </div>
       {archive && (
         <Panel title="研究档案">

@@ -2,9 +2,14 @@
 
 from datetime import timedelta
 
-from . import db
+from . import db, usage
 
-TOOLS = ("inspect_sector", "read_news", "recall")
+_METERING = {
+    "inspect_sector": ("tool", "查阅已载入板块指标"),
+    "read_news": ("search", "检索板块新闻"),
+    "recall": ("tool", "检索历史经验"),
+}
+TOOLS = tuple(_METERING)
 
 
 def select_calls(requests, candidates):
@@ -40,50 +45,53 @@ def investigate(requests, candidates, memories, as_of):
     calls = []
     for tool, bid in select_calls(requests, candidates):
         row = by_id[bid]
-        if tool == "read_news":
-            articles = _board_news(row["board"], as_of)
-            result = {"articles": articles}
-            has_data = bool(articles)
-            # A selected article can now be cited against this board's actual evidence.
-            row["news"] = list({n["id"]: n for n in [*articles, *row["news"]]}.values())
-            row["evidence_ids"] = list(
-                dict.fromkeys([*row["evidence_ids"], *(f"N{n['id']}" for n in articles)])
-            )
-        elif tool == "recall":
-            previous = db.query(
-                f"""SELECT report_id,as_of,payload->>'summary' AS summary
-                FROM {db.qualified("agent_research")}
-                WHERE as_of<%s AND coalesce((payload->>'recorded_at')::timestamptz,as_of)<=%s
-                AND payload->'watchlist' @> jsonb_build_array(jsonb_build_object('board_id',%s::int))
-                ORDER BY as_of DESC,report_id DESC LIMIT 2""",
-                [as_of, as_of, bid],
-            )
-            result = {
-                "memories": [
-                    m
-                    for m in memories
-                    if m["board_id"] == bid and m["proxy_code"] == row["proxy_code"]
-                ],
-                "prior_research": [{**r, "as_of": r["as_of"].isoformat()} for r in previous],
-            }
-            has_data = any(result.values())
-        else:
-            result = {
-                key: row.get(key)
-                for key in (
-                    "as_of",
-                    "source",
-                    "proxy_code",
-                    "momentum_5",
-                    "momentum_20",
-                    "flow_ratio",
-                    "capital_flow",
-                    "intraday",
-                    "fund_status",
-                    "behavior",
+        kind, operation = _METERING[tool]
+        with usage.attempt(kind=kind, provider="本地研究库", operation=operation, cost_basis="no_charge",
+                           detail="读取本地研究资料，无独立 API 费。"):
+            if tool == "read_news":
+                articles = _board_news(row["board"], as_of)
+                result = {"articles": articles}
+                has_data = bool(articles)
+                # A selected article can now be cited against this board's actual evidence.
+                row["news"] = list({n["id"]: n for n in [*articles, *row["news"]]}.values())
+                row["evidence_ids"] = list(
+                    dict.fromkeys([*row["evidence_ids"], *(f"N{n['id']}" for n in articles)])
                 )
-            }
-            has_data = True
+            elif tool == "recall":
+                previous = db.query(
+                    f"""SELECT report_id,as_of,payload->>'summary' AS summary
+                    FROM {db.qualified("agent_research")}
+                    WHERE as_of<%s AND coalesce((payload->>'recorded_at')::timestamptz,as_of)<=%s
+                    AND payload->'watchlist' @> jsonb_build_array(jsonb_build_object('board_id',%s::int))
+                    ORDER BY as_of DESC,report_id DESC LIMIT 2""",
+                    [as_of, as_of, bid],
+                )
+                result = {
+                    "memories": [
+                        m
+                        for m in memories
+                        if m["board_id"] == bid and m["proxy_code"] == row["proxy_code"]
+                    ],
+                    "prior_research": [{**r, "as_of": r["as_of"].isoformat()} for r in previous],
+                }
+                has_data = any(result.values())
+            else:
+                result = {
+                    key: row.get(key)
+                    for key in (
+                        "as_of",
+                        "source",
+                        "proxy_code",
+                        "momentum_5",
+                        "momentum_20",
+                        "flow_ratio",
+                        "capital_flow",
+                        "intraday",
+                        "fund_status",
+                        "behavior",
+                    )
+                }
+                has_data = True
         calls.append(
             {
                 "tool": tool,
