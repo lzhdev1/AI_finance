@@ -1,0 +1,285 @@
+{
+  "period": [
+    "2026-05-21",
+    "2026-11-20"
+  ],
+  "scope": "产品资料概要属于招募说明书的一部分。逐只核对公开日期、C类代码及标的。板块是研究代理，各基金跟踪自己的指数。",
+  "funds": [
+    {
+      "code": "004857",
+      "mapped_sector": "建筑材料",
+      "historical_share_name": "广发中证全指建筑材料指数C",
+      "underlying_index": "中证全指建筑材料指数",
+      "disclosed": "2025-06-24",
+      "title": "广发中证全指建筑材料指数型发起式证券投资基金(广发中证全指建筑材料指数C)基金产品资料概要更新",
+      "source_url": "https://pdf.dfcfw.com/pdf/H2_AN202506241696590210_1.pdf",
+      "pdf_sha256": "19bd6aebada4ddac6ca17de516c17daac55d50dbf28e2a0310ccb77380838d56",
+      "document_confirms_index": true
+    },
+    {
+      "code": "007882",
+      "mapped_sector": "保险",
+      "historical_share_name": "易方达沪深300非银ETF联接C",
+      "underlying_index": "沪深300非银行金融指数",
+      "disclosed": "2026-05-19",
+      "title": "易方达沪深300非银行金融交易型开放式指数证券投资基金联接基金(易方达沪深300非银ETF联接C)基金产品资料概要更新",
+      "source_url": "https://pdf.dfcfw.com/pdf/H2_AN202605191822427398_1.pdf",
+      "pdf_sha256": "54076420e6a53b1306611bb2f3c3253c22cfc59e853eeb583b4c8507abe22fb3",
+      "document_confirms_index": true
+    },
+    {
+      "code": "008089",
+      "mapped_sector": "房地产",
+      "historical_share_name": "华夏房地产ETF联接C",
+      "underlying_index": "中证全指房地产指数",
+      "disclosed": "2025-06-30",
+      "title": "华夏中证全指房地产交易型开放式指数证券投资基金发起式联接基金(华夏房地产ETF联接C)基金产品资料概要更新(2025-06-30)",
+      "source_url": "https://pdf.dfcfw.com/pdf/H2_AN202506301700200715_1.pdf",
+      "pdf_sha256": "71985aa3fbe60abd76af2a5b8bb9f9eb0f54ab669cac9b42863167aa9f5bc76a",
+      "document_confirms_index": true
+    },
+    {
+      "code": "012414",
+      "mapped_sector": "白酒",
+      "historical_share_name": "招商中证白酒指数C",
+      "underlying_index": "中证白酒指数",
+      "disclosed": "2025-05-26",
+      "title": "招商中证白酒指数证券投资基金(C类份额)基金产品资料概要更新",
+      "source_url": "https://pdf.dfcfw.com/pdf/H2_AN202505261679316585_1.pdf",
+      "pdf_sha256": "ee90ddaf4c390bc95d5f2940ab0f560963a77307fe33e89cd21decf91bcfb25e",
+      "document_confirms_index": true
+    },
+    {
+      "code": "012729",
+      "mapped_sector": "游戏",
+      "historical_share_name": "国泰中证动漫游戏ETF联接C",
+      "underlying_index": "中证动漫游戏指数",
+      "disclosed": "2025-11-27",
+      "title": "国泰中证动漫游戏交易型开放式指数证券投资基金发起式联接基金(国泰中证动漫游戏ETF联接C)基金产品资料概要更新",
+      "source_url": "https://pdf.dfcfw.com/pdf/H2_AN202511271789153364_1.pdf",
+      "pdf_sha256": "93a8c13eba6f26fbffe49a3e88c4770d6626ad8aae4d3ffd9960f2e1b60df3a0",
+      "document_confirms_index": true
+    },
+    {
+      "code": "012974",
+      "mapped_sector": "汽车整车",
+      "historical_share_name": "国泰中证800汽车与零部件ETF发起联接C",
+      "underlying_index": "中证800汽车与零部件指数",
+      "disclosed": "2025-12-10",
+      "title": "国泰中证800汽车与零部件交易型开放式指数证券投资基金发起式联接基金(国泰中证800汽车与零部件ETF发起联接C)产品资料概要更新",
+      "source_url": "https://pdf.dfcfw.com/pdf/H2_AN202512101797445362_1.pdf",
+      "pdf_sha256": "56af990a515835325aeec60175dddea26065109836be187899a8e0b69136d891",
+      "document_confirms_index": true
+    },
+    {
+      "code": "013413",
+      "mapped_sector": "环境治理",
+      "historical_share_name": "交银中证环境治理指数(LOF)C",
+      "underlying_index": "中证环境治理指数",
+      "disclosed": "2025-07-11",
+      "title": "交银施罗德中证环境治理指数型证券投资基金(LOF)(C类份额)基金产品资料概要更新",
+      "source_url": "https://pdf.dfcfw.com/pdf/H2_AN202507111706797556_1.pdf",
+      "pdf_sha256": "7addf39d858105869ca3449c55c8717e112d3c35ffa80d34e3f8c75e7d33f43e",
+      "document_confirms_index": true
+    },
+    {
+      "code": "014028",
+      "mapped_sector": "银行",
+      "historical_share_name": "招商中证银行指数C",
+      "underlying_index": "中证银行指数",
+      "disclosed": "2026-05-19",
+      "title": "招商中证银行指数证券投资基金(C类份额)基金产品资料概要更新",
+      "source_url": "https://pdf.dfcfw.com/pdf/H2_AN202605191822429047_1.pdf",
+      "pdf_sha256": "6cbe1e3022c5507d2402f3d62dd61968ae3f8304aa5357c1c6a5499e70126f08",
+      "document_confirms_index": true
+    },
+    {
+      "code": "016815",
+      "mapped_sector": "钢铁",
+      "historical_share_name": "国联钢铁C",
+      "underlying_index": "国证钢铁行业指数",
+      "disclosed": "2025-12-26",
+      "title": "国联国证钢铁行业指数型证券投资基金(C类份额)基金产品资料概要更新",
+      "source_url": "https://pdf.dfcfw.com/pdf/H2_AN202512251807957094_1.pdf",
+      "pdf_sha256": "8557f9473efdcf8a15b366a5beb979791df7681c15a6a0a7b80e80000775f067",
+      "document_confirms_index": true
+    },
+    {
+      "code": "016892",
+      "mapped_sector": "中药",
+      "historical_share_name": "鹏华中证中药ETF联接C",
+      "underlying_index": "中证中药指数",
+      "disclosed": "2025-10-10",
+      "title": "鹏华中证中药交易型开放式指数证券投资基金联接基金(C类基金份额)基金产品资料概要(更新)",
+      "source_url": "https://pdf.dfcfw.com/pdf/H2_AN202510101759354907_1.pdf",
+      "pdf_sha256": "e86516ef1c1d8bc3c29e82ac0b5e0ba66edf85e565a60a2f616cc0a251d9683d",
+      "document_confirms_index": true
+    },
+    {
+      "code": "018301",
+      "mapped_sector": "消费电子",
+      "historical_share_name": "华夏消费电子ETF联接C",
+      "underlying_index": "国证消费电子主题指数",
+      "disclosed": "2025-06-30",
+      "title": "华夏国证消费电子主题交易型开放式指数证券投资基金发起式联接基金(华夏消费电子ETF联接C)基金产品资料概要更新(2025-06-30)",
+      "source_url": "https://pdf.dfcfw.com/pdf/H2_AN202506301700200864_1.pdf",
+      "pdf_sha256": "2f38d8a5e8973a172bdd82e03f4d618040285c5e5c9885c0754dd98b03e1577e",
+      "document_confirms_index": true
+    },
+    {
+      "code": "018686",
+      "mapped_sector": "证券",
+      "historical_share_name": "博时证券公司ETF联接C",
+      "underlying_index": "中证全指证券公司指数",
+      "disclosed": "2025-12-03",
+      "title": "博时中证全指证券公司交易型开放式指数证券投资基金联接基金(博时证券公司ETF联接C)基金产品资料概要更新",
+      "source_url": "https://pdf.dfcfw.com/pdf/H2_AN202512031792743486_1.pdf",
+      "pdf_sha256": "d58531a73d5ed880bfc6aa276d1d4d1c0361c5e210fef18cd10d4395d3aa2aeb",
+      "document_confirms_index": true
+    },
+    {
+      "code": "020705",
+      "mapped_sector": "通信服务",
+      "historical_share_name": "南方中证通信服务ETF发起联接C",
+      "underlying_index": "中证通信服务指数",
+      "disclosed": "2026-03-26",
+      "title": "南方中证通信服务交易型开放式指数证券投资基金发起式联接基金(C类份额)基金产品资料概要(更新)",
+      "source_url": "https://pdf.dfcfw.com/pdf/H2_AN202603261820758027_1.pdf",
+      "pdf_sha256": "710a6a8f3045dfaa3ac3a927926a8662c9e692ee32b78b1e7fdd1a881c6a0e57",
+      "document_confirms_index": true
+    },
+    {
+      "code": "020900",
+      "mapped_sector": "通信设备",
+      "historical_share_name": "天弘中证全指通信设备指数发起C",
+      "underlying_index": "中证全指通信设备指数",
+      "disclosed": "2025-06-27",
+      "title": "天弘中证全指通信设备指数型发起式证券投资基金(C类份额)基金产品资料概要(更新)",
+      "source_url": "https://pdf.dfcfw.com/pdf/H2_AN202506271698407702_1.pdf",
+      "pdf_sha256": "952c8a4713501d26664a44ab3267f4187ae5cb4ce429686c778e8f8dfb6fac3e",
+      "document_confirms_index": true
+    },
+    {
+      "code": "020904",
+      "mapped_sector": "工程机械",
+      "historical_share_name": "广发中证工程机械ETF发起式联接C",
+      "underlying_index": "中证工程机械主题指数",
+      "disclosed": "2025-06-10",
+      "title": "广发中证工程机械主题交易型开放式指数证券投资基金发起式联接基金(广发中证工程机械ETF发起式联接C)基金产品资料概要更新",
+      "source_url": "https://pdf.dfcfw.com/pdf/H2_AN202506101688085106_1.pdf",
+      "pdf_sha256": "4b6d788736875979c711b81f2ff59b0d1f3ae1e5b6b5169ff1103138fca1e92e",
+      "document_confirms_index": true
+    },
+    {
+      "code": "021470",
+      "mapped_sector": "医疗器械",
+      "historical_share_name": "华安中证全指医疗器械指数发起式C",
+      "underlying_index": "中证全指医疗器械指数",
+      "disclosed": "2025-09-19",
+      "title": "华安中证全指医疗器械指数型发起式证券投资基金(华安中证全指医疗器械指数发起式C)基金产品资料概要更新",
+      "source_url": "https://pdf.dfcfw.com/pdf/H2_AN202509191746478133_1.pdf",
+      "pdf_sha256": "1957d9824dc6290fc164394723beb0cf5e4285a58fda91e5d89349f6e1670f2d",
+      "document_confirms_index": true
+    },
+    {
+      "code": "021533",
+      "mapped_sector": "半导体",
+      "historical_share_name": "天弘中证半导体材料设备主题指数发起C",
+      "underlying_index": "中证半导体材料设备主题指数",
+      "disclosed": "2026-03-10",
+      "title": "天弘中证半导体材料设备主题指数型发起式证券投资基金(C类份额)基金产品资料概要(更新)",
+      "source_url": "https://pdf.dfcfw.com/pdf/H2_AN202603101820436833_1.pdf",
+      "pdf_sha256": "fa3f05a97715bd3438a588ecda45064483bc25ad9f2ad9149edea97a177d6b93",
+      "document_confirms_index": true
+    },
+    {
+      "code": "021622",
+      "mapped_sector": "汽车零部件",
+      "historical_share_name": "天弘中证汽车零部件主题指数发起C",
+      "underlying_index": "中证汽车零部件主题指数",
+      "disclosed": "2025-10-10",
+      "title": "天弘中证汽车零部件主题指数型发起式证券投资基金(C类份额)基金产品资料概要(更新)",
+      "source_url": "https://pdf.dfcfw.com/pdf/H2_AN202510101759354773_1.pdf",
+      "pdf_sha256": "360aac48dc7b0327c27fb3e9b36ee2b9eead30ed6f5a5fd7b1353eebdb84e2ff",
+      "document_confirms_index": true
+    },
+    {
+      "code": "021753",
+      "mapped_sector": "电力",
+      "historical_share_name": "南方中证全指电力公用事业ETF发起联接C",
+      "underlying_index": "中证全指电力公用事业指数",
+      "disclosed": "2025-06-27",
+      "title": "南方中证全指电力公用事业交易型开放式指数证券投资基金发起式联接基金(C类份额)基金产品资料概要(更新)",
+      "source_url": "https://pdf.dfcfw.com/pdf/H2_AN202506271698381965_1.pdf",
+      "pdf_sha256": "cd1b5d0323fe64c116b549e510f4e8afa8e9222d170eec568d2cff5a294cb814",
+      "document_confirms_index": true
+    },
+    {
+      "code": "021964",
+      "mapped_sector": "电池",
+      "historical_share_name": "天弘国证新能源电池指数发起C",
+      "underlying_index": "国证新能源电池指数",
+      "disclosed": "2025-06-27",
+      "title": "天弘国证新能源电池指数型发起式证券投资基金(C类份额)基金产品资料概要(更新)",
+      "source_url": "https://pdf.dfcfw.com/pdf/H2_AN202506271698410152_1.pdf",
+      "pdf_sha256": "f73c80fa2e4da8d6816fda0dc427e80c323fbf31a6b9ecd57c2ddff5c5a0b946",
+      "document_confirms_index": true
+    },
+    {
+      "code": "025833",
+      "mapped_sector": "电网设备",
+      "historical_share_name": "天弘中证电网设备主题指数发起C",
+      "underlying_index": "中证电网设备主题指数",
+      "disclosed": "2025-12-16",
+      "title": "天弘中证电网设备主题指数型发起式证券投资基金(C类份额)基金产品资料概要(更新)",
+      "source_url": "https://pdf.dfcfw.com/pdf/H2_AN202512161801486480_1.pdf",
+      "pdf_sha256": "9b9836ae7e97797a8a4ee46f588210b0b02082d89dfcd22b26a7f7a7f80fd712",
+      "document_confirms_index": true
+    },
+    {
+      "code": "028521",
+      "mapped_sector": "软件开发",
+      "historical_share_name": "前海开源中证全指软件开发指数C",
+      "underlying_index": "中证全指软件开发指数",
+      "disclosed": "2026-07-29",
+      "title": "前海开源中证全指软件开发指数型证券投资基金基金产品资料概要",
+      "source_url": "https://pdf.dfcfw.com/pdf/H2_AN202607291827441438_1.pdf",
+      "pdf_sha256": "2fed8e6a562e488cdcda372029eae369baca83d84e9266f6ee0224c7e0d6e0c3",
+      "document_confirms_index": true
+    }
+  ],
+  "effective_changes": [
+    {
+      "code": "018686",
+      "published": "2025-12-02",
+      "effective": "2025-12-03",
+      "description": "证券公司指数基金转换为同主题ETF联接，早于回放起点。",
+      "url": "https://pdf.dfcfw.com/pdf/H2_AN202512011791909173_1.pdf"
+    },
+    {
+      "code": "028521",
+      "published": "2026-08-25",
+      "effective": "2026-08-27",
+      "description": "日常申购、赎回自8月27日开放。合同8月20日生效。",
+      "url": "https://pdf.dfcfw.com/pdf/H2_AN202608251828386795_1.pdf"
+    },
+    {
+      "code": "021964",
+      "published": "2026-09-19",
+      "effective": "2026-09-21",
+      "description": "国证新能源电池指数更名为国证储能电池指数，编算方法同步修订。",
+      "url": "https://pdf.dfcfw.com/pdf/H2_AN202609191829639183_1.pdf"
+    },
+    {
+      "code": "025833",
+      "published": "2026-11-19",
+      "effective": "2026-11-20",
+      "description": "同一电网设备主题指数发起式基金转换为ETF发起式联接基金。",
+      "url": "https://pdf.dfcfw.com/pdf/H2_AN202611191831843421_1.pdf"
+    }
+  ],
+  "scope_notes": [
+    "007882含证券和保险，映射为保险。012974含汽车与零部件，映射为汽车整车。021533为半导体材料设备，映射为半导体。",
+    "资料支持产品与主题的历史关联。未用当时全市场已存在的全部基金重建筛选池，仍存在选池与幸存者偏差。"
+  ]
+}

@@ -1,0 +1,44 @@
+[project]
+name = "quantlab"
+version = "0.2.0"
+description = "A-share fund research and signal platform"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "akshare==1.20.25",
+    "pandas>=2.2,<3.0",
+    "numpy>=1.26,<2.3",
+    "pyarrow>=16.0",
+    "psycopg[binary]>=3.2",
+    "pyyaml>=6.0",
+    "requests>=2.31",
+    "beautifulsoup4>=4.12,<5",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "apscheduler>=3.10,<4",
+    "python-dotenv>=1.0",
+    "tzdata>=2024.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.5",
+    "jupyterlab>=4.2",
+    "ipykernel>=6.29",
+]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"

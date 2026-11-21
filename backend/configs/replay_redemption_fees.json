@@ -1,0 +1,81 @@
+{
+  "period": ["2026-05-21", "2026-11-20"],
+  "scope": "个人投资者场外C类份额公开标准赎回费。各基金在下列资料概要版本内的档位一致。rates 的首项是持有自然日上限（不含），null 表示无上限。",
+  "funds": [
+    {
+      "code": "008089",
+      "rates": [[7, 0.015], [30, 0.005], [null, 0]],
+      "documents": [
+        {"published": "2025-06-30", "page": 3, "url": "https://pdf.dfcfw.com/pdf/H2_AN202506301700200715_1.pdf", "title": "华夏中证全指房地产交易型开放式指数证券投资基金发起式联接基金(华夏房地产ETF联接C)基金产品资料概要更新(2025-06-30)", "sha256": "71985aa3fbe60abd76af2a5b8bb9f9eb0f54ab669cac9b42863167aa9f5bc76a"},
+        {"published": "2026-05-29", "page": 3, "url": "https://pdf.dfcfw.com/pdf/H2_AN202605291822990154_1.pdf", "title": "华夏中证全指房地产交易型开放式指数证券投资基金发起式联接基金(华夏房地产ETF联接C)基金产品资料概要更新(2026-05-29)", "sha256": "c75addf9ab23240a88042298d839830aca1689e691f6a7b3c00c34f611b13187"}
+      ]
+    },
+    {
+      "code": "012414",
+      "rates": [[7, 0.015], [null, 0]],
+      "documents": [
+        {"published": "2025-05-26", "page": 3, "url": "https://pdf.dfcfw.com/pdf/H2_AN202505261679316585_1.pdf", "title": "招商中证白酒指数证券投资基金(C类份额)基金产品资料概要更新", "sha256": "ee90ddaf4c390bc95d5f2940ab0f560963a77307fe33e89cd21decf91bcfb25e"},
+        {"published": "2026-05-26", "page": 3, "url": "https://pdf.dfcfw.com/pdf/H2_AN202605261822870960_1.pdf", "title": "招商中证白酒指数证券投资基金(C类份额)基金产品资料概要更新", "sha256": "a8e3b8848296687f3b5435c42d8795a3512e36501542cd8dd68f73754da12ff1"}
+      ]
+    },
+    {
+      "code": "014028",
+      "rates": [[7, 0.015], [null, 0]],
+      "documents": [
+        {"published": "2026-05-19", "page": 4, "url": "https://pdf.dfcfw.com/pdf/H2_AN202605191822429047_1.pdf", "title": "招商中证银行指数证券投资基金(C类份额)基金产品资料概要更新", "sha256": "6cbe1e3022c5507d2402f3d62dd61968ae3f8304aa5357c1c6a5499e70126f08"}
+      ]
+    },
+    {
+      "code": "018301",
+      "rates": [[7, 0.015], [null, 0]],
+      "documents": [
+        {"published": "2025-06-30", "page": 3, "url": "https://pdf.dfcfw.com/pdf/H2_AN202506301700200864_1.pdf", "title": "华夏国证消费电子主题交易型开放式指数证券投资基金发起式联接基金(华夏消费电子ETF联接C)基金产品资料概要更新(2025-06-30)", "sha256": "2f38d8a5e8973a172bdd82e03f4d618040285c5e5c9885c0754dd98b03e1577e"},
+        {"published": "2026-05-29", "page": 3, "url": "https://pdf.dfcfw.com/pdf/H2_AN202605291822990283_1.pdf", "title": "华夏国证消费电子主题交易型开放式指数证券投资基金发起式联接基金(华夏消费电子ETF联接C)基金产品资料概要更新(2026-05-29)", "sha256": "1db56de1093d86d7225628b1b17248883be8571a6b85bd1822debc435230268a"}
+      ]
+    },
+    {
+      "code": "021533",
+      "rates": [[7, 0.015], [null, 0]],
+      "documents": [
+        {"published": "2026-03-10", "page": 4, "url": "https://pdf.dfcfw.com/pdf/H2_AN202603101820436833_1.pdf", "title": "天弘中证半导体材料设备主题指数型发起式证券投资基金(C类份额)基金产品资料概要(更新)", "sha256": "fa3f05a97715bd3438a588ecda45064483bc25ad9f2ad9149edea97a177d6b93"},
+        {"published": "2026-06-26", "page": 4, "url": "https://pdf.dfcfw.com/pdf/H2_AN202606261823874498_1.pdf", "title": "天弘中证半导体材料设备主题指数型发起式证券投资基金(C类份额)基金产品资料概要(更新)", "sha256": "4fe25e5b2a950daaef7e16507fcb3fde34eaa35922bb488ca3df4d1036b2cb30"}
+      ]
+    },
+    {
+      "code": "021622",
+      "rates": [[7, 0.015], [null, 0]],
+      "documents": [
+        {"published": "2025-10-10", "page": 4, "url": "https://pdf.dfcfw.com/pdf/H2_AN202510101759354773_1.pdf", "title": "天弘中证汽车零部件主题指数型发起式证券投资基金(C类份额)基金产品资料概要(更新)", "sha256": "360aac48dc7b0327c27fb3e9b36ee2b9eead30ed6f5a5fd7b1353eebdb84e2ff"},
+        {"published": "2026-06-26", "page": 4, "url": "https://pdf.dfcfw.com/pdf/H2_AN202606261823874437_1.pdf", "title": "天弘中证汽车零部件主题指数型发起式证券投资基金(C类份额)基金产品资料概要(更新)", "sha256": "5094a93eba049709bfa8e6526b9792d3c770aba0041be0efc7e01ab9dc486e55"}
+      ]
+    },
+    {
+      "code": "021753",
+      "rates": [[7, 0.015], [null, 0]],
+      "documents": [
+        {"published": "2025-06-27", "page": 3, "url": "https://pdf.dfcfw.com/pdf/H2_AN202506271698381965_1.pdf", "title": "南方中证全指电力公用事业交易型开放式指数证券投资基金发起式联接基金(C类份额)基金产品资料概要(更新)", "sha256": "cd1b5d0323fe64c116b549e510f4e8afa8e9222d170eec568d2cff5a294cb814"},
+        {"published": "2026-06-25", "page": 3, "url": "https://pdf.dfcfw.com/pdf/H2_AN202606251823828870_1.pdf", "title": "南方中证全指电力公用事业交易型开放式指数证券投资基金发起式联接基金(C类份额)基金产品资料概要(更新)", "sha256": "82ba263225f9a55e702409494875fd137936ad79beb70508d66c9ba276a03066"},
+        {"published": "2026-07-22", "page": 3, "url": "https://pdf.dfcfw.com/pdf/H2_AN202607221827240916_1.pdf", "title": "南方中证全指电力公用事业交易型开放式指数证券投资基金发起式联接基金(C类份额)基金产品资料概要(20260722更新)", "sha256": "3435b51fbfa2ae6eb05c91ce2d5813bbef24bb8444d312e38a2da186b83e6e8b"}
+      ]
+    },
+    {
+      "code": "021964",
+      "rates": [[7, 0.015], [null, 0]],
+      "documents": [
+        {"published": "2025-06-27", "page": 4, "url": "https://pdf.dfcfw.com/pdf/H2_AN202506271698410152_1.pdf", "title": "天弘国证新能源电池指数型发起式证券投资基金(C类份额)基金产品资料概要(更新)", "sha256": "f73c80fa2e4da8d6816fda0dc427e80c323fbf31a6b9ecd57c2ddff5c5a0b946"},
+        {"published": "2026-06-26", "page": 4, "url": "https://pdf.dfcfw.com/pdf/H2_AN202606261823874191_1.pdf", "title": "天弘国证新能源电池指数型发起式证券投资基金(C类份额)基金产品资料概要(更新)", "sha256": "c9711e23f97d7b216a2d93364f0c0cd4d1e9f657acdf72ce4cc54175784af0a0"},
+        {"published": "2026-09-07", "page": 4, "url": "https://pdf.dfcfw.com/pdf/H2_AN202609071829087432_1.pdf", "title": "天弘国证新能源电池指数型发起式证券投资基金(C类份额)基金产品资料概要(更新)", "sha256": "ae75fb3984c84ad324482cb387a39ff4417a4e46847b0def90f903871bdc64d3"},
+        {"published": "2026-09-21", "page": 4, "url": "https://pdf.dfcfw.com/pdf/H2_AN202609211829694589_1.pdf", "title": "天弘国证储能电池指数型发起式证券投资基金(C类份额)基金产品资料概要(更新)", "sha256": "1faea96d69fe28b68a758f3906997b0fb4d8d79d9fb152a7ae1a17d9caebddb2"}
+      ]
+    },
+    {
+      "code": "025833",
+      "rates": [[7, 0.015], [null, 0]],
+      "documents": [
+        {"published": "2025-12-16", "page": 3, "url": "https://pdf.dfcfw.com/pdf/H2_AN202512161801486480_1.pdf", "title": "天弘中证电网设备主题指数型发起式证券投资基金(C类份额)基金产品资料概要(更新)", "sha256": "9b9836ae7e97797a8a4ee46f588210b0b02082d89dfcd22b26a7f7a7f80fd712"},
+        {"published": "2026-06-26", "page": 3, "url": "https://pdf.dfcfw.com/pdf/H2_AN202606261823874837_1.pdf", "title": "天弘中证电网设备主题指数型发起式证券投资基金(C类份额)基金产品资料概要(更新)", "sha256": "92d96781d3efb2ee7ebc1b9f751096ca5cc9a37d86dbe45c8428cc141ba086fa"},
+        {"published": "2026-11-20", "page": 3, "url": "https://pdf.dfcfw.com/pdf/H2_AN202611201831880802_1.pdf", "title": "天弘中证电网设备主题交易型开放式指数证券投资基金发起式联接基金(C类份额)基金产品资料概要(更新)", "sha256": "df89d326c037eb29eac6f7664db29e207ea83d2d38f15b41c34a000453478c3b"}
+      ]
+    }
+  ]
+}

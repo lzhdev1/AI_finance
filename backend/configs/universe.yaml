@@ -1,0 +1,56 @@
+# 基金池：先用 scripts/check_universe.py 校验代码与名称是否匹配
+# 这里全部使用 C 类份额：持有满 7/30 天赎回费为 0，适合双月轮动
+name: a_share_fund_core
+
+# 防御资产：短债基金
+defensive: "001868"
+
+# 双月调仓：1/3/5/7/9/11 月的第一个交易日
+rebalance_months: [1, 3, 5, 7, 9, 11]
+
+# 场外基金费率（按份额类别）
+# sell: [持有天数上限, 费率]，持有天数 < 上限时适用
+fees:
+  A:
+    buy: 0.0012          # 申购费 1 折
+    sell:
+      - [7, 0.015]       # 7 天内 1.5%
+      - [365, 0.005]     # 7 天 ~ 1 年 0.5%
+      - [730, 0.002]     # 1 ~ 2 年 0.2%
+      - [999999, 0.0]
+  C:
+    buy: 0.0
+    sell:
+      - [7, 0.015]
+      - [999999, 0.0]
+
+# 已按管理人资料核实的逐基金场外赎回费，仅在在线模拟库该基金没有任何赎回费档时播种。
+disclosed_redemption_fees:
+  "008089":
+    share_class: C
+    reviewed_through: "2026-11-20"
+    source: "https://www.chinaamc.com/c/2026-05-29/940659.shtml"
+    prospectus: "https://www.chinaamc.com/c/2026-05-29/940664.shtml"
+    sell: [[7, 0.015], [30, 0.005], [999999, 0]]
+
+assets:
+  - code: "007339"
+    name: "易方达沪深300ETF联接C"
+    role: risk
+    share_class: C
+  - code: "004348"
+    name: "南方中证500ETF联接(LOF)C"
+    role: risk
+    share_class: C
+  - code: "008682"
+    name: "富国中证红利指数增强C"
+    role: risk
+    share_class: C
+  - code: "000217"
+    name: "华安黄金ETF联接C"
+    role: risk
+    share_class: C
+  - code: "001868"
+    name: "招商产业债券C"
+    role: defensive
+    share_class: C

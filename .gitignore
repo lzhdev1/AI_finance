@@ -1,0 +1,18 @@
+.env
+.env.*
+!.env.example
+data/
+logs/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.ruff_cache/
+.pytest_cache/
+.ipynb_checkpoints/
+*.duckdb
+*.duckdb.wal
+.DS_Store
+
+# DeepSeek Harness 沙箱的 ACL 诊断产物（工具状态，不属于项目）
+.dsh-acl-recovery/

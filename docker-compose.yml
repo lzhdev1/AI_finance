@@ -1,0 +1,99 @@
+name: quantlab
+
+# 前后端分离：frontend(nginx) → api(FastAPI) → 统一 PostgreSQL（shared-postgres）
+# 源码目录以只读/可写卷挂进容器，改代码不用重建镜像（生产应改为 COPY 进镜像）
+# 数据库由外部 shared-db 网络中的共享 PostgreSQL 提供。
+
+x-backend: &backend
+  build:
+    context: ./backend
+    args:
+      PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+  image: quantlab-backend:dev
+  env_file:
+    - path: .env
+      required: false
+  environment:
+    TZ: Asia/Shanghai
+    QUANTLAB_DATA_DIR: /app/data
+    QUANTLAB_LOG_DIR: /app/logs
+    PGHOST: shared-postgres
+    PGPORT: 5432
+    PGDATABASE: ${POSTGRES_DB:-quantlab}
+    PGUSER: ${POSTGRES_USER:-quantlab}
+    PGPASSWORD: ${POSTGRES_PASSWORD:-}
+  volumes:
+    - ./backend/src:/app/src
+    - ./backend/configs:/app/configs
+    - ./backend/scripts:/app/scripts
+    - ./backend/tests:/app/tests
+    - ./backend/db:/app/db
+    - ./data:/app/data
+    - ./logs:/app/logs
+  networks:
+    - default
+    - shared-db
+  restart: unless-stopped
+
+services:
+  init:
+    <<: *backend
+    command: python scripts/init_db.py
+    restart: "no"
+
+  # 后端 API：前端唯一的数据入口
+  api:
+    <<: *backend
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    command: >
+      uvicorn quantlab.api:app
+      --host 0.0.0.0 --port 8000
+    ports:
+      - "127.0.0.1:${API_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3).status==200 else 1)\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # 定时任务：盘中快照 → 14:30 决策 → 20:30 结算
+  scheduler:
+    <<: *backend
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    command: python -m quantlab.scheduler
+
+  # 前端：构建后由 nginx 提供静态文件，并把 /api 反代到 api
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmmirror.com}
+    image: quantlab-frontend:dev
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-3000}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # 研究环境（可选）：docker compose --profile research up -d jupyter
+  jupyter:
+    <<: *backend
+    profiles: ["research"]
+    command:
+      - sh
+      - -ec
+      - |
+        if [ -z "$${JUPYTER_TOKEN:-}" ]; then unset JUPYTER_TOKEN; fi
+        exec jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root --ServerApp.root_dir=/app
+    ports:
+      - "8888:8888"
+
+networks:
+  shared-db:
+    external: true

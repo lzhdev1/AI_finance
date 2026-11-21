@@ -1,0 +1,62 @@
+app:
+  timezone: Asia/Shanghai
+  data_dir: data
+  log_dir: logs
+  snapshot_dir: data/snapshots
+
+database:
+  schema: quantlab
+  statement_timeout_ms: 120000
+
+# 每日流水线的时点（Asia/Shanghai）
+# 核心约束：场外基金 15:00 截止，所以决策必须在 14:30 出，晚一分钟今天的单就作废。
+schedule:
+  premarket_news: "08:30"     # 含周末，更新新闻并生成纯研究报告
+  intraday_decide: "14:30"    # 交易日盘中研究并冻结模拟指令
+  decision_retry: "14:48"     # 当日已有冻结指令时自动跳过
+  ingest_market: "18:30"      # 收盘后：净值、板块行情、资金流全量更新
+  settle: "20:30"             # 净值公布后：按真实净值确认成交 + 结算预测
+  late_nav_retry: "22:30"
+  morning_nav_retry: "08:10"
+  score: "20:40"              # 预测打分兜底
+
+market:
+  benchmark: "000300"
+  board_kinds: [industry, concept]
+  news:
+    lookback_days: 3
+    sources: [cls, eastmoney]
+
+backtest:
+  start: "2020-01-01"
+  end: null
+  initial_cash: 100000
+  min_trade_amount: 200
+
+# ============================================================
+# Agent 自主管理仓位的规则（这些是“事前立约”，不随行情改动）
+# ============================================================
+agent:
+  max_pods: 5                  # 同时存活的仓上限
+  min_pods: 1                  # 至少保留一个基准仓
+  pod_capital: 100000          # 单仓模拟资金上限
+  pod_min_eval_days: 20        # 最短考核期（交易日），不满足不许退役
+  pod_hard_stop_drawdown: 0.12 # 单仓回撤超过该值立即停牌
+  pod_soft_retire_hit_rate: 0.45   # 到期评估：预测命中率低于此值且跑输基准 → 退役
+  pod_cooldown_days: 10        # 退役后同策略冷却期（交易日）
+  open_max_board_overlap: 0.25 # 新仓与现存仓的板块重合度上限（Jaccard），超过不许开
+  pod_min_interval_days: 5     # 两次开仓之间至少间隔的交易日，防止"一天一个仓"
+  max_position: 0.35           # 单只基金在仓内上限
+  max_board_exposure: 0.45     # 单一板块在仓内上限
+  max_monthly_turnover: 0.60   # 月度换手上限
+  decision_cutoff: "14:30"     # 决策产出时点；15:00 前提交才能拿到当日净值
+  auto_open_pod: true          # 是否允许 agent 自主开新仓
+
+llm:
+  enabled: true
+  model_fast: deepseek-chat
+  model_deep: deepseek-reasoner
+  temperature: 0.2
+  max_tokens: 4096
+  timeout: 120
+  json_mode: true
